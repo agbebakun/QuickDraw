@@ -4,6 +4,7 @@
 		"bowtie",
 		"Denoise",
 		"Denoising",
+		"HITMISS",
 		"imread",
 		"imshow",
 		"imwrite",

@@ -5,3 +5,6 @@ logs.txt
 data/*.npy
 tensorboard/events.out.tfevents.*
 _local
+capture.png
+capture.png.*.png
+
