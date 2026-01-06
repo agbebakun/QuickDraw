@@ -7,7 +7,7 @@ From: https://github.com/vietnh1009/QuickDraw
 # Setup
 python3 -m venv .venv  # 3.13.7, project used 3.6
 source .venv/bin/activate
-pip install torch numpy opencv-python scikit-learn tensorboardX
+pip install torch numpy opencv-python scikit-learn tensorboardX rdp cairocffi
 
 # Training data
 # ...in `./data`, download from: https://console.cloud.google.com/storage/browser/quickdraw_dataset/full/numpy_bitmap
