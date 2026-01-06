@@ -4,8 +4,15 @@
 # pip install rdp cairocffi
 
 import numpy as np
-import cairocffi as cairo
 from rdp import rdp
+
+# Hack to add Homebrew's lib path to ctypes search paths on macOS
+#import sys
+#if sys.platform == "darwin":
+#    from ctypes.macholib import dyld
+#    dyld.DEFAULT_LIBRARY_FALLBACK.append("/opt/homebrew/lib")
+
+import cairocffi as cairo
 
 
 def stroke_to_raster(vector_strokes):

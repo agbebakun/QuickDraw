@@ -1,29 +1,68 @@
-<!-- spell-checker:words quickdraw venv numpy tensorboard scikit-learn -->
-<!--
+<!-- spell-checker:words quickdraw venv numpy tensorboard scikit-learn cairocffi DYLD -->
+
+# Fork of QuickDraw
 
 From: https://github.com/vietnh1009/QuickDraw
+
+## Setup
+
+Create the virtual environment and install dependencies:
 
 ```bash
 # Setup
 python3 -m venv .venv  # 3.13.7, project used 3.6
 source .venv/bin/activate
-pip install torch numpy opencv-python scikit-learn tensorboardX rdp cairocffi
+pip install torch numpy opencv-python scikit-learn tensorboardX
 
-# Training data
-# ...in `./data`, download from: https://console.cloud.google.com/storage/browser/quickdraw_dataset/full/numpy_bitmap
-# ...classes in `config.py`:
-# ..."apple", "book", "bowtie", "candle", "cloud", "cup", "door", "envelope", "eyeglasses", "guitar", "hammer", "hat", "ice cream", "leaf", "scissors", "star", "t-shirt", "pants", "lightning", "tree"
-data/full_numpy_bitmap_book.npy
+# Additional dependencies from stroke_to_raster.py
+brew install cairo
+pip install rdp cairocffi
+```
 
-# Training
+
+## Training
+
+Training classes defined in `CLASSES` in [src/config.py](src/config.py):
+
+```
+["apple", "book", "bowtie", "candle", "cloud", "cup", "door", "envelope", "eyeglasses", "guitar", "hammer", "hat", "ice cream", "leaf", "scissors", "star", "t-shirt", "pants", "lightning", "tree"]
+```
+
+Training data must be stored in the `data` folder as `data/full_numpy_bitmap_*.npy`, and can be downloaded from [https://console.cloud.google.com/storage/browser/quickdraw_dataset/full/numpy_bitmap](https://console.cloud.google.com/storage/browser/quickdraw_dataset/full/numpy_bitmap) and .
+
+To re-run training:
+
+```bash
+#source .venv/bin/activate
 python train.py
+```
 
-# Run
-python camera_app.py
+...which writes to `trained_models/whole_model_quickdraw` and also generates `trained_models/logs.txt`.
+
+
+## Run the example painting app
+
+```bash
+#source .venv/bin/activate
 python painting_app.py
 ```
 
+If you receive an error about finding the cairo library, you can temporarily fix it by setting the `DYLD_FALLBACK_LIBRARY_PATH` environment variable to point to the *Homebrew* library path:
+
+```bash
+export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
+```
+
+<!--
+export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH
 -->
+
+
+---
+
+_(Original `README.md` follows)_
+
+---
 
 <p align="center">
  <h1 align="center">QuickDraw</h1>
