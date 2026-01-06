@@ -39,6 +39,8 @@ python train.py
 
 ...which writes to `trained_models/whole_model_quickdraw` and also generates `trained_models/logs.txt`.
 
+Note also that images for each class are present in `images/*.png` at 72x72 resolution, but these are only used by the `camera_app.py` example.
+
 
 ## Run the example painting app
 

@@ -1,0 +1,21 @@
+{
+	"cSpell.words": [
+		"ARGB",
+		"bowtie",
+		"Denoise",
+		"Denoising",
+		"imread",
+		"imshow",
+		"imwrite",
+		"LBUTTONDOWN",
+		"LBUTTONUP",
+		"MOUSEMOVE",
+		"OTSU",
+		"Peucker",
+		"quickdraw",
+		"Ramer",
+		"Skeletonize",
+		"thresholded",
+		"thresholding"
+	]
+}
