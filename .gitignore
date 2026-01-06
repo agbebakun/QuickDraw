@@ -4,4 +4,8 @@ __pycache__
 logs.txt
 data/*.npy
 tensorboard/events.out.tfevents.*
+<<<<<<< HEAD
 venv
+=======
+_local
+>>>>>>> 8c937da2585c398acfe9261009bfd6d7cb165599
