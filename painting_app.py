@@ -40,7 +40,7 @@ def main():
     else:
         model = torch.load("trained_models/whole_model_quickdraw", map_location=lambda storage, loc: storage, weights_only=False)
     model.eval()
-    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    image = None
     cv2.namedWindow("Canvas")
     global ix, iy, is_drawing
     is_drawing = False
@@ -68,17 +68,20 @@ def main():
                 strokes[-1].append([x, y])
                 image_changed = True
         elif event == cv2.EVENT_LBUTTONUP:
+            if is_drawing == True:
+                # cv2.line(image, (ix, iy), (x, y), WHITE_RGB, 5)
+                ix = x
+                iy = y
+                # Add point to current stroke
+                strokes[-1].append([x, y])
+                image_changed = True
             is_drawing = False
-            # cv2.line(image, (ix, iy), (x, y), WHITE_RGB, 5)
-            ix = x
-            iy = y
-            # Add point to current stroke
-            strokes[-1].append([x, y])
-            image_changed = True
         return x, y
 
     cv2.setMouseCallback('Canvas', paint_draw)
     while (1):
+        if image is None:
+            image = np.zeros((480, 640, 3), dtype=np.uint8)
         # HACK: image_changed not being checked properly?
         image_changed = True
         if image_changed:
@@ -87,8 +90,10 @@ def main():
         key = cv2.waitKey(1) & 0xFF
         if key == 27:
             break
-        if key == ord(" "):
-
+        elif key == 127 or key == 8:
+            image = None
+            is_drawing = False
+        elif key == ord(" "):
             # Original resize method
             image = resize_image(image)
             detected_class = classify(model, image)
@@ -104,11 +109,8 @@ def main():
             cv2.waitKey(2000)
 
             # Clear canvas
-            image = np.zeros((480, 640, 3), dtype=np.uint8)
-
-            # Reset stroke tracking
-            ix = -1
-            iy = -1
+            image = None
+            is_drawing = False
 
             # Clear strokes
             strokes = []

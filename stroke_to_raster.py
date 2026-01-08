@@ -1,11 +1,21 @@
 # Convert vector stroke data to raster images
 # By Dan Jackson, 2026
 
+import numpy as np
+from rdp import rdp
+
+# brew install cairo
 # pip install rdp cairocffi
 
-import numpy as np
+# export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
+
+# Hack to add Homebrew's lib path to ctypes search paths on macOS
+#import sys
+#if sys.platform == "darwin":
+#    from ctypes.macholib import dyld
+#    dyld.DEFAULT_LIBRARY_FALLBACK.append("/opt/homebrew/lib")
+
 import cairocffi as cairo
-from rdp import rdp
 
 
 def stroke_to_raster(vector_strokes):
