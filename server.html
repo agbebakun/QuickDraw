@@ -94,6 +94,8 @@ async function recognize(data = null) {
 				);
 				console.log("Loading ONNX library and model...");
 				await recognizer.load();
+				// Debug: additional delay to test waiting for async load
+				//await new Promise(r => setTimeout(r, 5 * 1000));
 				console.log("ONNX model loaded.");
 				resolve();
 			}
@@ -274,24 +276,46 @@ async function locally_classify_strokes() {
 
 
 
-
+let shuffled_classes = [];
 function next_drawing() {
 	const instructionsDiv = document.querySelector(".instructions");
-
-	// Randomly choose a new class to draw
-	drawing_class = classes[Math.floor(Math.random() * classes.length)];
-
-	if (drawing_class) {
-		instructionsDiv.innerHTML = `Draw: ${drawing_class}.`;
-	} else {
-		instructionsDiv.innerHTML = 'Draw one of: ' + classes.join(", ") + '.';
-	}
 
 	// Clear image
 	clear();
 
 	// Clear results
 	document.getElementById("results").innerHTML = "";
+
+	if (!classes) {
+		instructionsDiv.innerHTML = "(Press 'Next' to start)";
+		return;
+	}
+
+	// If no more shuffled classes are left, reshuffle
+	if (!shuffled_classes.length) {
+		shuffled_classes = classes.slice();
+		// Try to avoid the same class as last time
+		for (let retry = 0; retry < 10; retry++) {
+			// Shuffle
+			for (let i = shuffled_classes.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[shuffled_classes[i], shuffled_classes[j]] = [shuffled_classes[j], shuffled_classes[i]];
+			}
+			// Check last class
+			if (shuffled_classes.length <= 0 || shuffled_classes[0] != drawing_class) break;
+		}
+	}
+
+	// Remove the first class
+	if (shuffled_classes.length > 0) {
+		drawing_class = shuffled_classes.shift();
+	}
+
+	if (drawing_class) {
+		instructionsDiv.innerHTML = `Draw: ${drawing_class}.`;
+	} else {
+		instructionsDiv.innerHTML = 'Draw one of: ' + classes.join(", ") + '.';
+	}
 }
 
 function clear() {
