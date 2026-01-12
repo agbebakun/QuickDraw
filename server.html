@@ -186,17 +186,17 @@ async function run() {
 	canvas.width = CANVAS_SIZE;
 	canvas.height = canvas.width;
 	canvas.addEventListener("mousedown", (e) => {
-		canvas.setPointerCapture(e.pointerId);
+		//canvas.setPointerCapture(e.pointerId);
 		startDrawing(e.offsetX, e.offsetY);
 	});
 	canvas.addEventListener("mousemove", (e) => draw(e.offsetX, e.offsetY));
 	canvas.addEventListener("mouseup", (e) => {
 		stopDrawing();
-		canvas.releasePointerCapture(e.pointerId);
+		//canvas.releasePointerCapture(e.pointerId);
 	});
 	canvas.addEventListener("mouseout", stopDrawing);
 	canvas.addEventListener("touchstart", (e) => {
-		canvas.setPointerCapture(e.pointerId);
+		//canvas.setPointerCapture(e.pointerId);
 		const rect = canvas.getBoundingClientRect();
 		const touch = e.touches[0];
 		startDrawing(touch.clientX - rect.left, touch.clientY - rect.top);
@@ -211,7 +211,7 @@ async function run() {
 	canvas.addEventListener("touchend", (e) => {
 		stopDrawing();
 		e.preventDefault();
-		canvas.releasePointerCapture(e.pointerId);
+		//canvas.releasePointerCapture(e.pointerId);
 		// If the last stroke had only one point, remove it (to avoid dots)
 		if (strokes.length > 0) {
 			if (strokes[strokes.length - 1].length <= 1) {
