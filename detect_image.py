@@ -161,7 +161,7 @@ def crop_margin_proportion(image, margin_proportion):
 
 
 def evaluate(filenames):
-    model = load_model("trained_models/whole_model_quickdraw")
+    model = load_model()
 
     hack_sharpen = False
 

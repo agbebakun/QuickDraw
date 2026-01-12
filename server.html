@@ -44,9 +44,10 @@ canvas {
 </div>
 <div class="controls">
 	<button id="clearButton">Clear</button>
-	<button id="classifyStrokesButton">Classify</button>
-	<button id="nextButton">Next</button>
+	<button id="locallyClassifyStrokesButton">Check</button>
+	<button class="hidden" id="classifyStrokesButton">Classify from Strokes</button>
 	<button class="hidden" id="classifyImageButton">Classify from Image</button>
+	<button id="nextButton">Next</button>
 </div>
 <div id="results"></div>
 
@@ -60,6 +61,222 @@ const strokes = [];		// Array to hold strokes (each stoke is an array of points,
 let is_drawing = false;
 let drawing_class = null;
 let classes = [];		// Fetch from server
+
+
+
+
+// --- LOCAL RECOGNIZER ---
+const IMAGE_SIZE = 28;
+let recognizer = null;
+
+// Sample input
+function randomImage() {
+	const data = [];
+	for (let y = 0; y < IMAGE_SIZE; y++) {
+		for (let x = 0; x < IMAGE_SIZE; x++) {
+			data.push(Math.random());
+		}
+	}
+	return data;
+}
+
+// use an async context to call onnxruntime functions.
+async function recognize(data = null) {
+	if (!window.onnxRecognizerPromise) {
+		// Dynamically load recognizer script
+		window.onnxRecognizerPromise = new Promise((resolve, reject) => {
+			const script = document.createElement('script');
+			script.src = 'onnx-recognizer.js';
+			script.onload = resolve;
+			script.onerror = reject;
+			document.head.appendChild(script);
+		});
+	}
+	await window.onnxRecognizerPromise;
+
+	if (!recognizer) {
+		recognizer = new OnnxRecognizer(
+			"./trained_models/whole_model_quickdraw.onnx",
+			[1, 1, IMAGE_SIZE, IMAGE_SIZE],
+			'input',
+			'linear_2'
+		);
+		console.log("Loading ONNX library and model...");
+		await recognizer.load();
+		console.log("ONNX model loaded.");
+	}
+
+	if (!data) {
+		return null;
+	}
+
+	console.log("Running recognition...");
+	const output = await recognizer.recognize(data);
+	// console.log("Recognition output:", output);
+
+	// Softmax
+	const softmax = recognizer.softmax(output);
+	// console.log("Softmax output:", softmax);
+
+	// Ordered results
+	orderedIndices = recognizer.orderedIndices(softmax);
+	// console.log("Ordered indices:", orderedIndices);
+	// for (let i = 0; i < orderedIndices.length; i++) {
+	// 	const idx = orderedIndices[i];
+	// 	console.log(`Class ${idx}: Probability ${softmax[idx]}`);
+	// }
+
+	// Maximum index
+	const maxIndex = recognizer.maxIndex(softmax);
+
+	return {
+		output,
+		softmax,
+		orderedIndices,
+		maxIndex,
+	};
+}
+
+// Draw strokes to small image
+function draw_to_canvas(strokes, pen_size = 1) {
+	// Find min and max coordinates
+	let min_x = null;
+	let min_y = null;
+	let max_x = -null;
+	let max_y = -null;
+	for (const stroke of strokes) {
+		for (const point of stroke) {
+			const [x, y] = point;
+			if (min_x === null || x < min_x) min_x = x;
+			if (min_y === null || y < min_y) min_y = y;
+			if (max_x === null || x > max_x) max_x = x;
+			if (max_y === null || y > max_y) max_y = y;
+		}
+	}
+
+	// Check if valid
+	if (min_x === null || min_y === null || max_x === null || max_y === null) {
+		return null; // No strokes
+	}
+	if (max_x <= min_x || max_y <= min_y) {
+		return null; // Invalid strokes
+	}
+
+	// Add some padding
+	const padding = pen_size * 2;
+
+	// Create canvas
+	const canvas = document.createElement("canvas");
+	canvas.width = IMAGE_SIZE;
+	canvas.height = IMAGE_SIZE;
+
+	// Scale
+	const scale_x = (canvas.width - padding * 2) / (max_x - min_x);
+	const scale_y = (canvas.height - padding * 2) / (max_y - min_y);
+	const scale = Math.min(scale_x, scale_y);
+
+	// Offset to center
+	const offset_x = (canvas.width - (max_x - min_x) * scale) / 2;
+	const offset_y = (canvas.height - (max_y - min_y) * scale) / 2;
+
+	// Drawing parameters
+	const ctx = canvas.getContext("2d");
+	ctx.fillStyle = "black";
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	ctx.strokeStyle = "white";
+	ctx.lineCap = "round";
+	ctx.lineJoin = "round";
+	ctx.lineWidth = pen_size;
+
+	// Draw strokes
+	for (const stroke of strokes) {
+		if (stroke.length === 0) continue;
+		ctx.beginPath();
+		const [first_x, first_y] = stroke[0];
+		ctx.moveTo(
+			(first_x - min_x) * scale + offset_x,
+			(first_y - min_y) * scale + offset_y
+		);
+		for (let i = 1; i < stroke.length; i++) {
+			const [x, y] = stroke[i];
+			ctx.lineTo(
+				(x - min_x) * scale + offset_x,
+				(y - min_y) * scale + offset_y
+			);
+		}
+		ctx.stroke();
+	}
+
+	return canvas;
+}
+
+function canvas_to_image_url(canvas) {
+	if (!canvas) return null;
+	return canvas.toDataURL("image/png");
+}
+
+function canvas_to_image_data(canvas) {
+	if (!canvas) return null;
+	const imageData = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+	// Greyscale to array of exact size
+	const data = new Array(IMAGE_SIZE * IMAGE_SIZE);
+	for (let y = 0; y < IMAGE_SIZE; y++) {
+		for (let x = 0; x < IMAGE_SIZE; x++) {
+			const index = (y * IMAGE_SIZE + x) * 4;
+			const r = imageData.data[index + 0];
+			const g = imageData.data[index + 1];
+			const b = imageData.data[index + 2];
+			// Convert to greyscale value (0-1)
+			const grey = (r + g + b) / (3 * 255);
+			data[y * IMAGE_SIZE + x] = grey;
+		}
+	}
+	return data;
+}
+
+// async function test() {
+// 	const data = randomImage();
+// 	const result = await recognize(data);
+// 	console.log(result);
+// }
+// test();
+
+async function locally_classify_strokes() {
+	const canvas = draw_to_canvas(strokes);
+
+	// Output debug image
+	if (false) {
+		const imageUrl = canvas_to_image_url(canvas);
+		if (imageUrl) {
+			let debugImage = document.getElementById("debugImage");
+			if (!debugImage) {
+				debugImage = document.createElement("img");
+				debugImage.id = "debugImage";
+				document.body.insertBefore(debugImage, document.body.firstChild);
+			}
+			debugImage.src = imageUrl;
+		}
+	}
+
+	const imageData = canvas_to_image_data(canvas);
+	const result = await recognize(imageData);
+	const results = {
+		detected_class: !result ? '' : classes[result.maxIndex],
+		class_scores: !result ? [] : result.orderedIndices.map(idx => {
+			return {
+				class: classes[idx],
+				score: result.softmax[idx],
+			};
+		}),
+	};
+
+	show_results(results);
+}
+
+// ------
+
+
+
 
 function next_drawing() {
 	const instructionsDiv = document.querySelector(".instructions");
@@ -91,7 +308,9 @@ function show_results(results) {
 	const detected_class = results.detected_class;
 	const resultsDiv = document.getElementById("results");
 	const correct = detected_class === drawing_class;
-	if (correct) {
+	if (!detected_class) {
+		resultsDiv.innerHTML = `<h2>Sorry, I could not guess.</h2>`;
+	} else if (correct) {
 		resultsDiv.innerHTML = `<h2>Correct! I guessed it was: ${detected_class}!</h2>`;
 	} else {
 		resultsDiv.innerHTML = `<h2>Oops, I thought it was: ${detected_class}.</h2>`;
@@ -109,7 +328,7 @@ function show_results(results) {
 }
 
 async function get_classes() {
-	const response = await fetch("/classes");
+	const response = await fetch("/classes.json");
 	const result = await response.json();
 	console.log("Available classes:", result.classes);
 	return result.classes;
@@ -145,9 +364,10 @@ async function classify_image() {
 }
 
 document.querySelector("#clearButton").addEventListener("click", () => clear());
+document.querySelector("#locallyClassifyStrokesButton").addEventListener("click", () => locally_classify_strokes());
+document.querySelector("#classifyStrokesButton").addEventListener("click", () => classify_strokes());
 document.querySelector("#classifyImageButton").addEventListener("click", () => classify_image());
 document.querySelector("#nextButton").addEventListener("click", () => next_drawing());
-document.querySelector("#classifyStrokesButton").addEventListener("click", () => classify_strokes());
 
 function startDrawing(x, y) {
 	is_drawing = true;
@@ -175,6 +395,7 @@ function draw(x, y) {
 
 function stopDrawing() {
 	is_drawing = false;
+
 	//classify_strokes();
 }
 

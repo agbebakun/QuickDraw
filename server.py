@@ -1,11 +1,11 @@
 # pip install flask
 from flask import Flask, jsonify, request, send_from_directory
 
-from classify import load_model, classify, print_scores, most_likely, classes
+from classify import load_model, classify, most_likely, classes
 from stroke_to_raster import stroke_to_raster               # For recognising from strokes
 from detect_image import normalize_image, load_from_buffer  # For recognising from image data
 
-model = load_model("trained_models/whole_model_quickdraw")
+model = load_model()
 
 
 app = Flask(__name__)
@@ -14,8 +14,24 @@ def home():
     # Serve static file
     return send_from_directory('.', 'server.html')
 
+
+# Web-based recognizer
+@app.route('/onnx-recognizer.js')
+def onnx_recognizer_js():
+    return send_from_directory('.', 'onnx-recognizer.js', mimetype='application/javascript')
+@app.route('/ort/ort.min.js')
+def ort_min_js():
+    return send_from_directory('.', 'ort/ort.min.js', mimetype='application/javascript')
+@app.route('/ort/ort-wasm-simd.wasm')
+def ort_wasm_simd_wasm():
+    return send_from_directory('.', 'ort/ort-wasm-simd.wasm', mimetype='application/wasm')
+@app.route('/trained_models/whole_model_quickdraw.onnx')
+def onnx_model():
+    return send_from_directory('.', 'trained_models/whole_model_quickdraw.onnx', mimetype='application/binary')
+
+
 # API - return classes
-@app.route('/classes')
+@app.route('/classes.json')
 def api_get_classes():
     classes_list = classes()
     return {"classes": classes_list}
@@ -98,5 +114,5 @@ def api_classify_strokes():
 
 
 host = '127.0.0.1'
-port = 5000
+port = 5001
 app.run(debug=True, host=host, port=port)

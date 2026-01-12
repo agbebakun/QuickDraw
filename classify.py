@@ -7,8 +7,10 @@ import torch
 from src import model
 torch.serialization.add_safe_globals([model.QuickDraw, torch.nn.modules.container.Sequential, torch.nn.modules.conv.Conv2d, torch.nn.modules.activation.ReLU, torch.nn.modules.pooling.MaxPool2d, torch.nn.modules.linear.Linear, torch.nn.modules.dropout.Dropout])
 
+DEFAULT_MODEL = "trained_models/whole_model_quickdraw"
+IMAGE_SIZE = 28
 
-def load_model(filename):
+def load_model(filename = DEFAULT_MODEL):
     # Load model
     if torch.cuda.is_available():
         model = torch.load(filename)
@@ -49,4 +51,3 @@ def print_scores(class_scores, threshold=0.001, top_k=5):
 
 def classes():
     return CLASSES
-

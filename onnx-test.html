@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Web Recognizer</title>
+<link rel="icon" href="data:;base64,">
+</head>
+<body>
+<!-- <script src="onnx-recognizer.js"></script> -->
+<script>
+    const IMAGE_SIZE = 28;
+    let recognizer = null;
+
+    // Sample input
+    function randomImage() {
+        const data = [];
+        for (let y = 0; y < IMAGE_SIZE; y++) {
+            for (let x = 0; x < IMAGE_SIZE; x++) {
+                data.push(Math.random());
+            }
+        }
+        return data;
+    }
+
+    // use an async context to call onnxruntime functions.
+    async function recognize(data = null) {
+        if (!window.onnxRecognizerPromise) {
+            // Dynamically load recognizer script
+            window.onnxRecognizerPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'onnx-recognizer.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+        await window.onnxRecognizerPromise;
+
+
+        if (!recognizer) {
+            recognizer = new OnnxRecognizer(
+                "./trained_models/whole_model_quickdraw.onnx",
+                [1, 1, IMAGE_SIZE, IMAGE_SIZE],
+                'input',
+                'linear_2'
+            );
+        }
+
+        console.log("Loading ONNX library and model...");
+        await recognizer.load();
+        console.log("ONNX model loaded.");
+
+        if (!data) {
+            return null;
+        }
+
+        console.log("Running recognition...");
+        const output = await recognizer.recognize(data);
+        console.log("Recognition output:", output);
+
+        // Softmax
+        const softmax = recognizer.softmax(output);
+        console.log("Softmax output:", softmax);
+
+        // Ordered results
+        orderedIndices = recognizer.orderedIndices(softmax);
+        console.log("Ordered indices:", orderedIndices);
+        for (let i = 0; i < orderedIndices.length; i++) {
+            const idx = orderedIndices[i];
+            console.log(`Class ${idx}: Probability ${softmax[idx]}`);
+        }
+
+        // Maximum index
+        const maxIndex = recognizer.maxIndex(softmax);
+
+        return {
+            output,
+            softmax,
+            orderedIndices,
+            maxIndex,
+        };
+    }
+
+    async function test() {
+        const data = randomImage();
+        const result = await recognize(data);
+        console.log(result);
+    }
+    test();
+</script>
+</body>
+</html>

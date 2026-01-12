@@ -17,6 +17,12 @@ pip install torch numpy opencv-python scikit-learn tensorboardX
 # Additional dependencies from stroke_to_raster.py
 brew install cairo
 pip install rdp cairocffi
+
+# Additional dependencies from server.py
+pip install flask
+
+# Additional dependencies from onnx-test.py
+pip install onnxscript onnxruntime
 ```
 
 

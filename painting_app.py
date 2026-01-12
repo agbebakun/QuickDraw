@@ -25,7 +25,7 @@ def resize_image(image, size = 28):
     return image
 
 def main():
-    model = load_model("trained_models/whole_model_quickdraw")
+    model = load_model()
     image = None
     cv2.namedWindow("Canvas")
     global ix, iy, is_drawing
