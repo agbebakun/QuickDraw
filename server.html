@@ -86,7 +86,7 @@ async function recognize(data = null) {
 		// Dynamically load recognizer script
 		window.onnxRecognizerPromise = new Promise((resolve, reject) => {
 			const script = document.createElement('script');
-			script.src = 'onnx-recognizer.js';
+			script.src = './onnx-recognizer.js';
 			script.onload = resolve;
 			script.onerror = reject;
 			document.head.appendChild(script);
@@ -328,14 +328,14 @@ function show_results(results) {
 }
 
 async function get_classes() {
-	const response = await fetch("/classes.json");
+	const response = await fetch("./classes.json");
 	const result = await response.json();
 	console.log("Available classes:", result.classes);
 	return result.classes;
 }
 
 async function classify_strokes() {
-	const response = await fetch("/classify_strokes", {
+	const response = await fetch("./classify_strokes", {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json"
@@ -351,7 +351,7 @@ async function classify_image() {
 	const canvas = document.querySelector("canvas");
 	const dataURL = canvas.toDataURL("image/png");
 	const rawData = dataURL.replace(/^data:image\/png;base64,/, "");
-	const response = await fetch("/classify_image_data", {
+	const response = await fetch("./classify_image_data", {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json"
