@@ -44,15 +44,15 @@ canvas {
 </div>
 <div class="controls">
 	<button id="clearButton">Clear</button>
-	<button id="locallyClassifyStrokesButton">Check</button>
-	<button class="hidden" id="classifyStrokesButton">Classify from Strokes</button>
-	<button class="hidden" id="classifyImageButton">Classify from Image</button>
+	<button id="classifyStrokesButton">Check</button>
+	<button class="hidden" id="classifyImageButton">Check from Image</button>
 	<button id="nextButton">Next</button>
 </div>
 <div id="results"></div>
 
 <script>
 // Config
+const USE_LOCAL_RECOGNIZER = true;
 const CANVAS_SIZE = 512;
 const LINE_WIDTH = 4;
 
@@ -61,8 +61,6 @@ const strokes = [];		// Array to hold strokes (each stoke is an array of points,
 let is_drawing = false;
 let drawing_class = null;
 let classes = [];		// Fetch from server
-
-
 
 
 // --- LOCAL RECOGNIZER ---
@@ -87,24 +85,23 @@ async function recognize(data = null) {
 		window.onnxRecognizerPromise = new Promise((resolve, reject) => {
 			const script = document.createElement('script');
 			script.src = './onnx-recognizer.js';
-			script.onload = resolve;
+			script.onload = async () => {
+				recognizer = new OnnxRecognizer(
+					"./trained_models/whole_model_quickdraw.onnx",
+					[1, 1, IMAGE_SIZE, IMAGE_SIZE],
+					'input',
+					'linear_2'
+				);
+				console.log("Loading ONNX library and model...");
+				await recognizer.load();
+				console.log("ONNX model loaded.");
+				resolve();
+			}
 			script.onerror = reject;
 			document.head.appendChild(script);
 		});
 	}
 	await window.onnxRecognizerPromise;
-
-	if (!recognizer) {
-		recognizer = new OnnxRecognizer(
-			"./trained_models/whole_model_quickdraw.onnx",
-			[1, 1, IMAGE_SIZE, IMAGE_SIZE],
-			'input',
-			'linear_2'
-		);
-		console.log("Loading ONNX library and model...");
-		await recognizer.load();
-		console.log("ONNX model loaded.");
-	}
 
 	if (!data) {
 		return null;
@@ -364,8 +361,13 @@ async function classify_image() {
 }
 
 document.querySelector("#clearButton").addEventListener("click", () => clear());
-document.querySelector("#locallyClassifyStrokesButton").addEventListener("click", () => locally_classify_strokes());
-document.querySelector("#classifyStrokesButton").addEventListener("click", () => classify_strokes());
+document.querySelector("#classifyStrokesButton").addEventListener("click", () => {
+	if (USE_LOCAL_RECOGNIZER) {
+		locally_classify_strokes();
+	} else {
+		classify_strokes();
+	}
+});
 document.querySelector("#classifyImageButton").addEventListener("click", () => classify_image());
 document.querySelector("#nextButton").addEventListener("click", () => next_drawing());
 
@@ -441,6 +443,10 @@ async function run() {
 		}
 	});
 
+	// In local-recognition mode, preload
+	if (USE_LOCAL_RECOGNIZER) {
+		await recognize(); // Preload model
+	}
 }
 
 document.addEventListener("DOMContentLoaded", run);
