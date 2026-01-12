@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:;base64,">
+<title>Quick Draw!</title>
+<style>
+body {
+	font-family: sans-serif;
+}
+canvas {
+	border: 1px solid black;
+	touch-action: none; /* Prevent scrolling on touch devices while drawing */
+	margin-top: 1em;
+}
+.hidden {
+	display: none;
+}
+</style>
+</head>
+<body>
+<h1>Welcome to Quick Draw!</h1>
+
+<!-- Test form to get classes -->
+<!--
+<form action="/classes" method="get">
+	<input type="submit" value="Get Classes">
+</form>
+-->
+
+<!-- Test form to upload an image file -->
+<!--
+<form action="/classify_image" method="post" enctype="multipart/form-data">
+	<label for="file">Choose an image to upload:</label>
+	<input type="file" name="image" accept="image/*" required>
+	<input type="submit" value="Upload Image">
+</form>
+-->
+
+<div class="instructions">-</div>
+<div class="drawing">
+	<canvas></canvas>
+</div>
+<div class="controls">
+	<button id="clearButton">Clear</button>
+	<button id="classifyStrokesButton">Classify</button>
+	<button id="nextButton">Next</button>
+	<button class="hidden" id="classifyImageButton">Classify from Image</button>
+</div>
+<div id="results"></div>
+
+<script>
+// Config
+const CANVAS_SIZE = 512;
+const LINE_WIDTH = 4;
+
+// State
+const strokes = [];		// Array to hold strokes (each stoke is an array of points, each point is an [x, y] pair)
+let is_drawing = false;
+let drawing_class = null;
+let classes = [];		// Fetch from server
+
+function next_drawing() {
+	const instructionsDiv = document.querySelector(".instructions");
+
+	// Randomly choose a new class to draw
+	drawing_class = classes[Math.floor(Math.random() * classes.length)];
+
+	if (drawing_class) {
+		instructionsDiv.innerHTML = `Draw: ${drawing_class}.`;
+	} else {
+		instructionsDiv.innerHTML = 'Draw one of: ' + classes.join(", ") + '.';
+	}
+
+	// Clear image
+	clear();
+
+	// Clear results
+	document.getElementById("results").innerHTML = "";
+}
+
+function clear() {
+	const ctx = document.querySelector("canvas").getContext("2d");
+	ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+	document.getElementById("results").innerHTML = "";
+	strokes.length = 0;
+}
+
+function show_results(results) {
+	const detected_class = results.detected_class;
+	const resultsDiv = document.getElementById("results");
+	const correct = detected_class === drawing_class;
+	if (correct) {
+		resultsDiv.innerHTML = `<h2>Correct! I guessed it was: ${detected_class}!</h2>`;
+	} else {
+		resultsDiv.innerHTML = `<h2>Oops, I thought it was: ${detected_class}.</h2>`;
+	}
+	let ul = document.createElement("ul");
+	results.class_scores.forEach(item => {
+		let score = (item.score * 100).toFixed(0);
+		if (score > 0) {
+			let li = document.createElement("li");
+			li.textContent = `${item.class}: ${score}%`;
+			ul.appendChild(li);
+		}
+	});
+	resultsDiv.appendChild(ul);
+}
+
+async function get_classes() {
+	const response = await fetch("/classes");
+	const result = await response.json();
+	console.log("Available classes:", result.classes);
+	return result.classes;
+}
+
+async function classify_strokes() {
+	const response = await fetch("/classify_strokes", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json"
+		},
+		body: JSON.stringify({ strokes: strokes })
+	});
+	const result = await response.json();
+	show_results(result);
+	return result;
+}
+
+async function classify_image() {
+	const canvas = document.querySelector("canvas");
+	const dataURL = canvas.toDataURL("image/png");
+	const rawData = dataURL.replace(/^data:image\/png;base64,/, "");
+	const response = await fetch("/classify_image_data", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json"
+		},
+		body: JSON.stringify({ image: rawData })
+	});
+	const result = await response.json();
+	show_results(result);
+	return result;
+}
+
+document.querySelector("#clearButton").addEventListener("click", () => clear());
+document.querySelector("#classifyImageButton").addEventListener("click", () => classify_image());
+document.querySelector("#nextButton").addEventListener("click", () => next_drawing());
+document.querySelector("#classifyStrokesButton").addEventListener("click", () => classify_strokes());
+
+function startDrawing(x, y) {
+	is_drawing = true;
+	strokes.push([[x, y]]);
+	// Clear results
+	document.getElementById("results").innerHTML = "";
+}
+
+function draw(x, y) {
+	if (!is_drawing) return;
+	const currentStroke = strokes[strokes.length - 1];
+	const lastPoint = currentStroke[currentStroke.length - 1];
+	const ctx = document.querySelector("canvas").getContext("2d");
+	ctx.lineWidth = LINE_WIDTH;
+	ctx.lineCap = "round";
+	ctx.beginPath();
+	ctx.moveTo(lastPoint[0], lastPoint[1]);
+	ctx.lineTo(x, y);
+	ctx.stroke();
+	currentStroke.push([x, y]);
+
+	// Clear results
+	document.getElementById("results").innerHTML = "";
+}
+
+function stopDrawing() {
+	is_drawing = false;
+	//classify_strokes();
+}
+
+async function run() {
+	classes = await get_classes();
+	next_drawing();
+
+	const canvas = document.querySelector("canvas");
+	canvas.width = CANVAS_SIZE;
+	canvas.height = canvas.width;
+	canvas.addEventListener("mousedown", (e) => {
+		canvas.setPointerCapture(e.pointerId);
+		startDrawing(e.offsetX, e.offsetY);
+	});
+	canvas.addEventListener("mousemove", (e) => draw(e.offsetX, e.offsetY));
+	canvas.addEventListener("mouseup", (e) => {
+		stopDrawing();
+		canvas.releasePointerCapture(e.pointerId);
+	});
+	canvas.addEventListener("mouseout", stopDrawing);
+	canvas.addEventListener("touchstart", (e) => {
+		canvas.setPointerCapture(e.pointerId);
+		const rect = canvas.getBoundingClientRect();
+		const touch = e.touches[0];
+		startDrawing(touch.clientX - rect.left, touch.clientY - rect.top);
+		e.preventDefault();
+	});
+	canvas.addEventListener("touchmove", (e) => {
+		const rect = canvas.getBoundingClientRect();
+		const touch = e.touches[0];
+		draw(touch.clientX - rect.left, touch.clientY - rect.top);
+		e.preventDefault();
+	});
+	canvas.addEventListener("touchend", (e) => {
+		stopDrawing();
+		e.preventDefault();
+		canvas.releasePointerCapture(e.pointerId);
+		// If the last stroke had only one point, remove it (to avoid dots)
+		if (strokes.length > 0) {
+			if (strokes[strokes.length - 1].length <= 1) {
+				strokes.pop();
+			}
+		}
+	});
+
+}
+
+document.addEventListener("DOMContentLoaded", run);
+</script>
+</body>
+</html>

@@ -18,7 +18,7 @@ from rdp import rdp
 import cairocffi as cairo
 
 
-def stroke_to_raster(vector_strokes):
+def stroke_to_raster(vector_strokes, debugPrefix = None):
     # Normalize and simplify strokes
     simplified_strokes = _normalize_and_simplify_strokes(vector_strokes)
 
@@ -32,6 +32,11 @@ def stroke_to_raster(vector_strokes):
     for y in range(side):
         for x in range(side):
             output_image[y, x] = raster_image[y * side + x]
+
+    if debugPrefix:
+        filename = debugPrefix + ".norm.png"
+        from cv2 import imwrite
+        imwrite(filename, output_image)
 
     return output_image
 
@@ -115,10 +120,12 @@ def _vector_to_raster(vector_images, side=28, line_diameter=16, padding=16, bg_c
         # clear background
         ctx.set_source_rgb(*bg_color)
         ctx.paint()
-        
-        bbox = np.hstack(vector_image).max(axis=1)
-        offset = ((original_side, original_side) - bbox) / 2.
-        offset = offset.reshape(-1,1)
+
+        offset = np.array([[original_side/2.],[original_side/2.]])
+        if len(vector_image) > 0:
+            bbox = np.hstack(vector_image).max(axis=1)
+            offset = ((original_side, original_side) - bbox) / 2.
+            offset = offset.reshape(-1,1)
         centered = [stroke + offset for stroke in vector_image]
 
         # draw strokes, this is the most cpu-intensive part

@@ -1,10 +1,13 @@
 {
 	"cSpell.words": [
+		"aeiou",
 		"ARGB",
 		"bowtie",
 		"Denoise",
 		"Denoising",
+		"frombuffer",
 		"HITMISS",
+		"imdecode",
 		"imread",
 		"imshow",
 		"imwrite",

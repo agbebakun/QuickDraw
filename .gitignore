@@ -7,4 +7,6 @@ tensorboard/events.out.tfevents.*
 _local
 capture.png
 capture.png.*.png
+web_image.*.png
+web_strokes.*.png
 

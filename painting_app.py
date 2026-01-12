@@ -1,14 +1,15 @@
 import cv2
 import numpy as np
-from src.config import *
-from src.dataset import CLASSES
+# from src.config import *
+# from src.dataset import CLASSES
 import torch
+
+from classify import load_model, classify, print_scores, most_likely
 
 from stroke_to_raster import stroke_to_raster
 
-# Fix: pickle.UnpicklingError
-from src import model
-torch.serialization.add_safe_globals([model.QuickDraw, torch.nn.modules.container.Sequential, torch.nn.modules.conv.Conv2d, torch.nn.modules.activation.ReLU, torch.nn.modules.pooling.MaxPool2d, torch.nn.modules.linear.Linear, torch.nn.modules.dropout.Dropout])
+
+WHITE_RGB = (255, 255, 255)
 
 
 # Original resize method
@@ -23,23 +24,8 @@ def resize_image(image, size = 28):
     image = cv2.resize(image, (size, size))
     return image
 
-# Classify
-def classify(model, image):
-    image = np.array(image, dtype=np.float32)[None, None, :, :]
-    image = torch.from_numpy(image)
-    logits = model(image)
-    class_id = torch.argmax(logits[0])
-    detected_class = CLASSES[class_id]
-    return detected_class
-
-
 def main():
-    # Load model
-    if torch.cuda.is_available():
-        model = torch.load("trained_models/whole_model_quickdraw")
-    else:
-        model = torch.load("trained_models/whole_model_quickdraw", map_location=lambda storage, loc: storage, weights_only=False)
-    model.eval()
+    model = load_model("trained_models/whole_model_quickdraw")
     image = None
     cv2.namedWindow("Canvas")
     global ix, iy, is_drawing
@@ -96,14 +82,18 @@ def main():
         elif key == ord(" "):
             # Original resize method
             image = resize_image(image)
-            detected_class = classify(model, image)
+            class_scores = classify(model, image)
+            print_scores(class_scores)
+            detected_class = most_likely(class_scores)
             print("Original: " + detected_class)
             cv2.imshow('Canvas', image)
             cv2.waitKey(1000)
 
             # New resize method -- convert strokes to required format
             image = stroke_to_raster(strokes)
-            detected_class = classify(model, image)
+            class_scores = classify(model, image)
+            print_scores(class_scores)
+            detected_class = most_likely(class_scores)
             print("New: " + detected_class)
             cv2.imshow('Canvas', image)
             cv2.waitKey(2000)

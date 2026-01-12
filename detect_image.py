@@ -1,16 +1,13 @@
 # Classify image
 # By Dan Jackson, 2026
 
+from fileinput import filename
 import sys
 import cv2
 import numpy as np
-from src.config import *
-from src.dataset import CLASSES
 import torch
 
-# Fix: pickle.UnpicklingError
-from src import model
-torch.serialization.add_safe_globals([model.QuickDraw, torch.nn.modules.container.Sequential, torch.nn.modules.conv.Conv2d, torch.nn.modules.activation.ReLU, torch.nn.modules.pooling.MaxPool2d, torch.nn.modules.linear.Linear, torch.nn.modules.dropout.Dropout])
+from classify import load_model, classify, print_scores, most_likely
 
 LINE_DIAMETER = 16
 PADDING = 16
@@ -21,14 +18,6 @@ CAPTURE_IMAGE_CROP_MARGIN = 0.25
 CAPTURE_IMAGE_SHARPEN = True
 
 
-# Classify
-def classify(model, image):
-    image = np.array(image, dtype=np.float32)[None, None, :, :]
-    image = torch.from_numpy(image)
-    logits = model(image)
-    class_id = torch.argmax(logits[0])
-    detected_class = CLASSES[class_id]
-    return detected_class
 
 
 # Skeletonize - from: https://opencvpython.blogspot.com/2012/05/skeletonization-using-opencv-python.html
@@ -49,9 +38,26 @@ def skeletonize(image):
     return skel
 
 
+def load_from_buffer(file_buffer):
+    file_bytes = np.frombuffer(file_buffer, np.uint8)
+    image = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)  # preserve any alpha (rather than IMREAD_COLOR)
+    return image        
+
+def load_from_file(filename):
+    image = cv2.imread(filename)
+    return image
+
 # Normalize image for classification
 def normalize_image(image, hack_sharpen = False, debugPrefix = None):
     w, h = image.shape[1], image.shape[0]
+
+    # If has alpha, flatten against a white background
+    if image.shape[2] == 4:
+        background = (255, 255, 255)
+        alpha_channel = image[:, :, 3] / 255.0
+        for c in range(3):
+            image[:, :, c] = (1.0 - alpha_channel) * background[c] + alpha_channel * image[:, :, c]
+        image = image[:, :, 0:3]
 
     # Greyscale
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -155,12 +161,7 @@ def crop_margin_proportion(image, margin_proportion):
 
 
 def evaluate(filenames):
-    # Load model
-    if torch.cuda.is_available():
-        model = torch.load("trained_models/whole_model_quickdraw")
-    else:
-        model = torch.load("trained_models/whole_model_quickdraw", map_location=lambda storage, loc: storage, weights_only=False)
-    model.eval()
+    model = load_model("trained_models/whole_model_quickdraw")
 
     hack_sharpen = False
 
@@ -186,7 +187,7 @@ def evaluate(filenames):
 
     # Evaluate each image from the command line
     for filename in filenames:
-        image = cv2.imread(filename)
+        image = load_from_file(filename)
 
         #debugPrefix = None
         debugPrefix = filename
@@ -198,7 +199,9 @@ def evaluate(filenames):
             hack_sharpen = False
         
         normalized_image = normalize_image(image, hack_sharpen, debugPrefix)
-        detected_class = classify(model, normalized_image)
+        class_scores = classify(model, normalized_image)
+        print_scores(class_scores)
+        detected_class = most_likely(class_scores)
 
         print(f"IMAGE: {filename} --> {detected_class}")
 
