@@ -152,8 +152,8 @@ Quick Draw!
 const USE_LOCAL_RECOGNIZER = true;
 
 // State
-const strokes = [];		// Array to hold strokes (each stoke is an array of points, each point is an [x, y] pair)
-let is_drawing = false;
+const strokes = [];		// Completed strokes (each stroke is an array of points, each point is an [x, y] pair)
+const activeStrokes = new Map(); // Active strokes keyed by pointerId
 let drawing_class = null;
 let recognized_class = null;
 let classes = [];		// Fetch from server
@@ -274,6 +274,10 @@ function draw_to_canvas(canvas, strokes, preserve_canvas) {
 	return canvas;
 }
 
+function getStrokesIncludingActive() {
+	return strokes.concat(Array.from(activeStrokes.values()));
+}
+
 // Draw strokes to small image
 function rescale_and_draw_to_canvas(strokes, pen_size = 1) {
 	// Find min and max coordinates
@@ -307,7 +311,6 @@ function rescale_and_draw_to_canvas(strokes, pen_size = 1) {
 	canvas.width = IMAGE_SIZE;
 	canvas.height = IMAGE_SIZE;
 
-	// Scale
 	const scale_x = (canvas.width - padding * 2) / (max_x - min_x);
 	const scale_y = (canvas.height - padding * 2) / (max_y - min_y);
 	const scale = Math.min(scale_x, scale_y);
@@ -478,6 +481,7 @@ function clear() {
 	ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 	show_results(null);
 	strokes.length = 0;
+	activeStrokes.clear();
 	recognized_class = null;
 }
 
@@ -568,36 +572,35 @@ function translate_coordinates(x, y) {
 	return [x, y];
 }
 
-function startDrawing(x, y) {
-	is_drawing = true;
-	const start_point = translate_coordinates(x, y);
-	strokes.push([start_point]);
+function startDrawing(pointerId, x, y) {
+	const startPoint = translate_coordinates(x, y);
+	activeStrokes.set(pointerId, [startPoint]);
 
-	// Clear results
+	// Clear results while drawing a fresh stroke
 	show_results(null);
 }
 
-function draw(x, y) {
-	if (!is_drawing) return;
-	const currentStroke = strokes[strokes.length - 1];
+function draw(pointerId, x, y) {
+	const currentStroke = activeStrokes.get(pointerId);
+	if (!currentStroke) return;
 	const point = translate_coordinates(x, y);
 	currentStroke.push(point);
 
-	// Draw only the last segment
+	// Draw only the last segment for this stroke
 	draw_to_canvas(document.querySelector("canvas"), [currentStroke.slice(-2)], true);
 }
 
-function stopDrawing() {
-	is_drawing = false;
+function stopDrawing(pointerId) {
+	const currentStroke = activeStrokes.get(pointerId);
+	if (!currentStroke) return;
+	activeStrokes.delete(pointerId);
 
-	if (strokes.length > 0) {
-		if (strokes[strokes.length - 1].length <= 1) {
-			strokes.pop();
-		}
+	if (currentStroke.length > 1) {
+		strokes.push(currentStroke);
 	}
 
-	// If auto-checking...
-	if (document.querySelector("#classifyStrokesButton").classList.contains("hidden")) {
+	// If auto-checking, only classify when all pointers finished
+	if (activeStrokes.size === 0 && document.querySelector("#classifyStrokesButton").classList.contains("hidden")) {
 		classify_strokes();
 	}
 }
@@ -613,13 +616,17 @@ async function run() {
 	const canvas = document.querySelector("canvas");
 	canvas.addEventListener("pointerdown", (e) => {
 		canvas.setPointerCapture(e.pointerId);
-		startDrawing(e.offsetX, e.offsetY);
+		startDrawing(e.pointerId, e.offsetX, e.offsetY);
 	});
 	canvas.addEventListener("pointermove", (e) => {
-		draw(e.offsetX, e.offsetY);
+		draw(e.pointerId, e.offsetX, e.offsetY);
 	});
 	canvas.addEventListener("pointerup", (e) => {
-		stopDrawing();
+		stopDrawing(e.pointerId);
+		canvas.releasePointerCapture(e.pointerId);
+	});
+	canvas.addEventListener("pointercancel", (e) => {
+		stopDrawing(e.pointerId);
 		canvas.releasePointerCapture(e.pointerId);
 	});
 
@@ -631,7 +638,7 @@ async function run() {
 		canvas.height = rect.height * dpr;
 		const ctx = canvas.getContext("2d");
 		console.log("Resized canvas to: ", canvas.width, canvas.height);
-		draw_to_canvas(canvas, strokes);
+		draw_to_canvas(canvas, getStrokesIncludingActive());
 	}
 	clear();
 	resizeCanvas();
