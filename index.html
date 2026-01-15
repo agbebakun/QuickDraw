@@ -39,6 +39,11 @@ main {
 	margin-top: 0.5em;
 	text-align: center;
 }
+.heading a {
+	color: black;
+	text-decoration: underline;
+	text-decoration-style: dotted;
+}
 
 .controls {
 	margin: 1em;
@@ -116,7 +121,7 @@ main {
 
 <main>
 <div class="heading">
-Quick Draw!
+	<a href="https://github.com/CCAI-CDT/QuickDraw" target="_blank">Quick Draw!</a>
 </div>
 
 <!-- Test form to get classes -->
@@ -245,7 +250,7 @@ function draw_to_canvas(canvas, strokes, preserve_canvas) {
 	offset_y = (canvas.height / 2) - (scale / 2);
 
 	// Stroke size is relative to scale
-	const pen_size = scale * (1/28);
+	const pen_size = Math.max(scale * (1/100), 1);
 
 	// Drawing parameters
 	const ctx = canvas.getContext("2d");

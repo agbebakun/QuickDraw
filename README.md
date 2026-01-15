@@ -47,6 +47,13 @@ python train.py
 
 Note also that images for each class are present in `images/*.png` at 72x72 resolution, but these are only used by the `camera_app.py` example.  Images for additional categories are available in `all_images/*.png`. 
 
+If you want to use the web-only model (`index.html` & `onnx-recognizer.js`) and you retrain the model and/or change the recognized classes, you will need to re-export the `trained_models/whole_model_quickdraw.onnx` file and the `./classes.json` file with:
+
+
+```bash
+python onnx-test.py export
+```
+
 
 ## Run the example painting app
 
