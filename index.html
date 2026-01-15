@@ -9,35 +9,43 @@
 body {
 	font-family: sans-serif;
 	width: 100vw;
+	width: 100svw;
 	height: 100vh;
-	overflow: hidden;
+	height: 100svh;
 	background-color: grey;
 	margin: 0;
 	padding: 0;
 	box-sizing: border-box;
+
+	overflow: hidden;
 }
 main {
 	margin: auto;
 	padding: 0;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: flex-start;
-	width: 100%;
+
+	display: grid;
+	grid-template-rows: auto auto 1fr auto;
 	height: 100%;
+	width: 100%;
 	max-width: 800px;
+
 	background-color: lightgrey;
+
+	overflow: hidden;
 }
 .heading {
 	font-size: 2em;
 	font-weight: bold;
 	margin-top: 0.5em;
+	text-align: center;
 }
 
 .controls {
 	margin: 1em;
+
 	display: flex;
-	width: 100%;
+	flex-direction: row;
+
 	align-items: center;
 	justify-content: center;
 }
@@ -73,15 +81,20 @@ main {
 	width: 100%;
 	height: 100%;
 	flex-grow: 1;
+
+	position: relative;
 }
 .drawing canvas {
 	outline: 1px solid black;
 	touch-action: none; /* Prevent scrolling on touch devices while drawing */
-	display: block;
 
-	max-width: 100%;
+	/* Take display out of line */
+	position: absolute;
+	top: 0;
+	left: 0;
+
+	width: 100%;
 	height: 100%;
-	aspect-ratio: 1;
 	margin: auto;
 
 	background: #fff9b1;
@@ -91,7 +104,7 @@ main {
 	height: 20vh;
 	overflow-y: auto;
 	width: 100%;
-	padding: 1em;
+	margin: 0 1em;
 }
 .hidden {
 	display: none;
@@ -223,7 +236,7 @@ async function recognize(data = null) {
 let scale = 1;
 let offset_x = 0;
 let offset_y = 0;
-function draw_to_canvas(canvas, strokes, last_stroke_segment_only = false) {
+function draw_to_canvas(canvas, strokes, preserve_canvas) {
 	// To allow resizes, strokes are stored relative to a centered maximum-fit square with coordinates from (0,0)-(1,1)
 
 	// Find origin and scale
@@ -236,7 +249,7 @@ function draw_to_canvas(canvas, strokes, last_stroke_segment_only = false) {
 
 	// Drawing parameters
 	const ctx = canvas.getContext("2d");
-	if (!last_stroke_segment_only) {
+	if (!preserve_canvas) {
 		ctx.fillStyle = "transparent";
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
 	}
@@ -246,15 +259,13 @@ function draw_to_canvas(canvas, strokes, last_stroke_segment_only = false) {
 	ctx.lineWidth = pen_size;
 
 	// Draw strokes
-	const strokes_to_draw = last_stroke_segment_only && strokes.length > 0 ? [strokes[strokes.length - 1]] : strokes;
-	for (const stroke of strokes_to_draw) {
-		const stroke_to_draw = last_stroke_segment_only ? stroke.slice(-2) : stroke;
-		if (stroke_to_draw.length === 0) continue;
+	for (const stroke of strokes) {
+		if (stroke.length === 0) continue;
 		ctx.beginPath();
-		const [first_x, first_y] = stroke_to_draw[0];
+		const [first_x, first_y] = stroke[0];
 		ctx.moveTo(first_x * scale + offset_x, first_y * scale + offset_y);
-		for (let i = 1; i < stroke_to_draw.length; i++) {
-			const [x, y] = stroke_to_draw[i];
+		for (let i = 1; i < stroke.length; i++) {
+			const [x, y] = stroke[i];
 			ctx.lineTo(x * scale + offset_x, y * scale + offset_y);
 		}
 		ctx.stroke();
@@ -368,6 +379,8 @@ function canvas_to_image_data(canvas) {
 // test();
 
 async function locally_classify_strokes() {
+	show_results('💭 Thinking...');
+
 	let result = null;
 	if (strokes.length > 0) {
 		const canvas = rescale_and_draw_to_canvas(strokes);
@@ -473,15 +486,17 @@ function show_results(results) {
 	recognized_class = null;
 	if (results == null) {
 		resultsDiv.innerHTML = '';
+	} else if (typeof results === 'string') {
+		resultsDiv.innerHTML = results;
 	} else {
 		recognized_class = results.detected_class;
 		const correct = recognized_class === drawing_class;
 		if (!recognized_class) {
-			resultsDiv.innerHTML = `<h2>Sorry, I could not guess.</h2>`;
+			resultsDiv.innerHTML = `<h2>😢 Sorry, I could not guess.</h2>`;
 		} else if (correct) {
-			resultsDiv.innerHTML = `<h2>Correct! I guessed it was: ${recognized_class}!</h2>`;
+			resultsDiv.innerHTML = `<h2>✅ Correct! I guessed it was: ${recognized_class}!</h2>`;
 		} else {
-			resultsDiv.innerHTML = `<h2>Oops, I thought it was: ${recognized_class}.</h2>`;
+			resultsDiv.innerHTML = `<h2>❌ Oops, I thought it was: ${recognized_class}.</h2>`;
 		}
 		let ul = document.createElement("ul");
 		results.class_scores.forEach(item => {
@@ -546,39 +561,30 @@ document.querySelector("#classifyStrokesButton").addEventListener("click", () =>
 document.querySelector("#classifyImageButton").addEventListener("click", () => classify_image());
 document.querySelector("#nextButton").addEventListener("click", () => next_drawing());
 
+function translate_coordinates(x, y) {
+	const dpr = window.devicePixelRatio || 1;
+	x = (dpr * x - offset_x) / scale;
+	y = (dpr * y - offset_y) / scale;
+	return [x, y];
+}
+
 function startDrawing(x, y) {
 	is_drawing = true;
-	x = (x - offset_x) / scale;
-	y = (y - offset_y) / scale;
-	strokes.push([[x, y]]);
+	const start_point = translate_coordinates(x, y);
+	strokes.push([start_point]);
+
 	// Clear results
 	show_results(null);
 }
 
 function draw(x, y) {
 	if (!is_drawing) return;
-
-	x = (x - offset_x) / scale;
-	y = (y - offset_y) / scale;
-
 	const currentStroke = strokes[strokes.length - 1];
+	const point = translate_coordinates(x, y);
+	currentStroke.push(point);
 
-	/*
-	const lastPoint = currentStroke[currentStroke.length - 1];
-	const ctx = document.querySelector("canvas").getContext("2d");
-	ctx.lineWidth = 4;
-	ctx.lineCap = "round";
-	ctx.beginPath();
-	ctx.moveTo(lastPoint[0], lastPoint[1]);
-	ctx.lineTo(x, y);
-	ctx.stroke();
-	*/
-
-	currentStroke.push([x, y]);
-	draw_to_canvas(document.querySelector("canvas"), strokes, true);
-
-	// Clear results
-	show_results(null);
+	// Draw only the last segment
+	draw_to_canvas(document.querySelector("canvas"), [currentStroke.slice(-2)], true);
 }
 
 function stopDrawing() {
@@ -597,7 +603,11 @@ function stopDrawing() {
 }
 
 async function run() {
-	classes = await get_classes();
+	try {
+		classes = await get_classes();
+	} catch (e) {
+		console.error("Error fetching classes:", e);
+	}
 	next_drawing();
 
 	const canvas = document.querySelector("canvas");
@@ -615,11 +625,12 @@ async function run() {
 
 	// Detect size change and resize canvas
 	function resizeCanvas() {
-		const rect = canvas.getBoundingClientRect();
+		const rect = document.querySelector("canvas").getBoundingClientRect();
 		const dpr = window.devicePixelRatio || 1;
 		canvas.width = rect.width * dpr;
 		canvas.height = rect.height * dpr;
 		const ctx = canvas.getContext("2d");
+		console.log("Resized canvas to: ", canvas.width, canvas.height);
 		draw_to_canvas(canvas, strokes);
 	}
 	clear();
