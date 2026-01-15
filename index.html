@@ -8,12 +8,631 @@
 <style>
 body {
 	font-family: sans-serif;
+	width: 100vw;
+	height: 100vh;
+	overflow: hidden;
+	background-color: grey;
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
 }
+main {
+	margin: auto;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	width: 100%;
+	height: 100%;
+	max-width: 800px;
+	background-color: lightgrey;
+}
+.heading {
+	font-size: 2em;
+	font-weight: bold;
+	margin-top: 0.5em;
+}
+
+.controls {
+	margin: 1em;
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: center;
+}
+
+.controls button {
+	font-size: 1em;
+	margin: 0 0.5em;
+	padding: 0.5em 1em;
+}
+
+.controls .instructions {
+	font-size: 1.2em;
+	flex-grow: 1;
+	width: 100%;
+	text-align: center;
+}
+
+.controls .instructions::before {
+	content: "\2139\0020";
+	font-weight: bold;
+}
+
+.controls .instructions .item {
+	font-weight: bold;
+	font-size: 1.2em;
+	white-space: nowrap;
+}
+
+.drawing {
+	box-sizing: border-box;
+	padding: 1em 1em;
+
+	width: 100%;
+	height: 100%;
+	flex-grow: 1;
+}
+.drawing canvas {
+	outline: 1px solid black;
+	touch-action: none; /* Prevent scrolling on touch devices while drawing */
+	display: block;
+
+	max-width: 100%;
+	height: 100%;
+	aspect-ratio: 1;
+	margin: auto;
+
+	background: #fff9b1;
+	cursor: crosshair;
+}
+.results {
+	height: 20vh;
+	overflow-y: auto;
+	width: 100%;
+	padding: 1em;
+}
+.hidden {
+	display: none;
+}
+
 </style>
 </head>
 <body>
-<ul>
-	<li><a href="server.html">Play Quick Draw!</a></li>
-</ul>
+
+<main>
+<div class="heading">
+Quick Draw!
+</div>
+
+<!-- Test form to get classes -->
+<!--
+<form action="/classes" method="get">
+	<input type="submit" value="Get Classes">
+</form>
+-->
+
+<!-- Test form to upload an image file -->
+<!--
+<form action="/classify_image" method="post" enctype="multipart/form-data">
+	<label for="file">Choose an image to upload:</label>
+	<input type="file" name="image" accept="image/*" required>
+	<input type="submit" value="Upload Image">
+</form>
+-->
+
+<div class="controls">
+	<button id="clearButton">🗑️ Clear</button>
+	<div class="instructions">-</div>
+	<button class="hidden" id="classifyStrokesButton">❓ Check</button>
+	<button class="hidden" id="classifyImageButton">Check from Image</button>
+	<button id="nextButton">-</button>
+</div>
+<div class="drawing">
+	<canvas></canvas>
+</div>
+<div class="results"></div>
+</main>
+<script>
+// Config
+const USE_LOCAL_RECOGNIZER = true;
+
+// State
+const strokes = [];		// Array to hold strokes (each stoke is an array of points, each point is an [x, y] pair)
+let is_drawing = false;
+let drawing_class = null;
+let recognized_class = null;
+let classes = [];		// Fetch from server
+
+
+// --- LOCAL RECOGNIZER ---
+const IMAGE_SIZE = 28;
+let recognizer = null;
+
+// Sample input
+function randomImage() {
+	const data = [];
+	for (let y = 0; y < IMAGE_SIZE; y++) {
+		for (let x = 0; x < IMAGE_SIZE; x++) {
+			data.push(Math.random());
+		}
+	}
+	return data;
+}
+
+// use an async context to call onnxruntime functions.
+async function recognize(data = null) {
+	if (!window.onnxRecognizerPromise) {
+		// Dynamically load recognizer script
+		window.onnxRecognizerPromise = new Promise((resolve, reject) => {
+			const script = document.createElement('script');
+			script.src = './onnx-recognizer.js';
+			script.onload = async () => {
+				recognizer = new OnnxRecognizer(
+					"./trained_models/whole_model_quickdraw.onnx",
+					[1, 1, IMAGE_SIZE, IMAGE_SIZE],
+					'input',
+					'linear_2'
+				);
+				console.log("Loading ONNX library and model...");
+				await recognizer.load();
+				// Debug: additional delay to test waiting for async load
+				//await new Promise(r => setTimeout(r, 5 * 1000));
+				console.log("ONNX model loaded.");
+				resolve();
+			}
+			script.onerror = reject;
+			document.head.appendChild(script);
+		});
+	}
+	await window.onnxRecognizerPromise;
+
+	if (!data) {
+		return null;
+	}
+
+	console.log("Running recognition...");
+	const output = await recognizer.recognize(data);
+	// console.log("Recognition output:", output);
+
+	// Softmax
+	const softmax = recognizer.softmax(output);
+	// console.log("Softmax output:", softmax);
+
+	// Ordered results
+	orderedIndices = recognizer.orderedIndices(softmax);
+	// console.log("Ordered indices:", orderedIndices);
+	// for (let i = 0; i < orderedIndices.length; i++) {
+	// 	const idx = orderedIndices[i];
+	// 	console.log(`Class ${idx}: Probability ${softmax[idx]}`);
+	// }
+
+	// Maximum index
+	const maxIndex = recognizer.maxIndex(softmax);
+
+	return {
+		output,
+		softmax,
+		orderedIndices,
+		maxIndex,
+	};
+}
+
+// Draw strokes canvas
+let scale = 1;
+let offset_x = 0;
+let offset_y = 0;
+function draw_to_canvas(canvas, strokes, last_stroke_segment_only = false) {
+	// To allow resizes, strokes are stored relative to a centered maximum-fit square with coordinates from (0,0)-(1,1)
+
+	// Find origin and scale
+	scale = Math.min(canvas.width, canvas.height);
+	offset_x = (canvas.width / 2) - (scale / 2);
+	offset_y = (canvas.height / 2) - (scale / 2);
+
+	// Stroke size is relative to scale
+	const pen_size = scale * (1/28);
+
+	// Drawing parameters
+	const ctx = canvas.getContext("2d");
+	if (!last_stroke_segment_only) {
+		ctx.fillStyle = "transparent";
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+	}
+	ctx.strokeStyle = "black";
+	ctx.lineCap = "round";
+	ctx.lineJoin = "round";
+	ctx.lineWidth = pen_size;
+
+	// Draw strokes
+	const strokes_to_draw = last_stroke_segment_only && strokes.length > 0 ? [strokes[strokes.length - 1]] : strokes;
+	for (const stroke of strokes_to_draw) {
+		const stroke_to_draw = last_stroke_segment_only ? stroke.slice(-2) : stroke;
+		if (stroke_to_draw.length === 0) continue;
+		ctx.beginPath();
+		const [first_x, first_y] = stroke_to_draw[0];
+		ctx.moveTo(first_x * scale + offset_x, first_y * scale + offset_y);
+		for (let i = 1; i < stroke_to_draw.length; i++) {
+			const [x, y] = stroke_to_draw[i];
+			ctx.lineTo(x * scale + offset_x, y * scale + offset_y);
+		}
+		ctx.stroke();
+	}
+
+	return canvas;
+}
+
+// Draw strokes to small image
+function rescale_and_draw_to_canvas(strokes, pen_size = 1) {
+	// Find min and max coordinates
+	let min_x = null;
+	let min_y = null;
+	let max_x = -null;
+	let max_y = -null;
+	for (const stroke of strokes) {
+		for (const point of stroke) {
+			const [x, y] = point;
+			if (min_x === null || x < min_x) min_x = x;
+			if (min_y === null || y < min_y) min_y = y;
+			if (max_x === null || x > max_x) max_x = x;
+			if (max_y === null || y > max_y) max_y = y;
+		}
+	}
+
+	// Check if valid
+	if (min_x === null || min_y === null || max_x === null || max_y === null) {
+		return null; // No strokes
+	}
+	if (max_x <= min_x || max_y <= min_y) {
+		return null; // Invalid strokes
+	}
+
+	// Add some padding
+	const padding = pen_size * 2;
+
+	// Create canvas
+	const canvas = document.createElement("canvas");
+	canvas.width = IMAGE_SIZE;
+	canvas.height = IMAGE_SIZE;
+
+	// Scale
+	const scale_x = (canvas.width - padding * 2) / (max_x - min_x);
+	const scale_y = (canvas.height - padding * 2) / (max_y - min_y);
+	const scale = Math.min(scale_x, scale_y);
+
+	// Offset to center
+	const offset_x = (canvas.width - (max_x - min_x) * scale) / 2;
+	const offset_y = (canvas.height - (max_y - min_y) * scale) / 2;
+
+	// Drawing parameters
+	const ctx = canvas.getContext("2d");
+	ctx.fillStyle = "black";
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	ctx.strokeStyle = "white";
+	ctx.lineCap = "round";
+	ctx.lineJoin = "round";
+	ctx.lineWidth = pen_size;
+
+	// Draw strokes
+	for (const stroke of strokes) {
+		if (stroke.length === 0) continue;
+		ctx.beginPath();
+		const [first_x, first_y] = stroke[0];
+		ctx.moveTo(
+			(first_x - min_x) * scale + offset_x,
+			(first_y - min_y) * scale + offset_y
+		);
+		for (let i = 1; i < stroke.length; i++) {
+			const [x, y] = stroke[i];
+			ctx.lineTo(
+				(x - min_x) * scale + offset_x,
+				(y - min_y) * scale + offset_y
+			);
+		}
+		ctx.stroke();
+	}
+
+	return canvas;
+}
+
+function canvas_to_image_url(canvas) {
+	if (!canvas) return null;
+	return canvas.toDataURL("image/png");
+}
+
+function canvas_to_image_data(canvas) {
+	if (!canvas) return null;
+	const imageData = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+	// Greyscale to array of exact size
+	const data = new Array(IMAGE_SIZE * IMAGE_SIZE);
+	for (let y = 0; y < IMAGE_SIZE; y++) {
+		for (let x = 0; x < IMAGE_SIZE; x++) {
+			const index = (y * IMAGE_SIZE + x) * 4;
+			const r = imageData.data[index + 0];
+			const g = imageData.data[index + 1];
+			const b = imageData.data[index + 2];
+			// Convert to greyscale value (0-1)
+			const grey = (r + g + b) / (3 * 255);
+			data[y * IMAGE_SIZE + x] = grey;
+		}
+	}
+	return data;
+}
+
+// async function test() {
+// 	const data = randomImage();
+// 	const result = await recognize(data);
+// 	console.log(result);
+// }
+// test();
+
+async function locally_classify_strokes() {
+	let result = null;
+	if (strokes.length > 0) {
+		const canvas = rescale_and_draw_to_canvas(strokes);
+
+		// Output debug image
+		if (false) {
+			const imageUrl = canvas_to_image_url(canvas);
+			if (imageUrl) {
+				let debugImage = document.getElementById("debugImage");
+				if (!debugImage) {
+					debugImage = document.createElement("img");
+					debugImage.id = "debugImage";
+					document.body.insertBefore(debugImage, document.body.firstChild);
+				}
+				debugImage.src = imageUrl;
+			}
+		}
+
+		const imageData = canvas_to_image_data(canvas);
+		result = await recognize(imageData);
+	}
+
+	const results = {
+		detected_class: !result ? '' : classes[result.maxIndex],
+		class_scores: !result ? [] : result.orderedIndices.map(idx => {
+			return {
+				class: classes[idx],
+				score: result.softmax[idx],
+			};
+		}),
+	};
+
+	show_results(results);
+}
+
+// ------
+
+
+
+let shuffled_classes = [];
+function next_drawing() {
+	// Clear image
+	clear();
+
+	// Only works if classes are loaded
+	if (classes) {
+		// If no more shuffled classes are left, reshuffle
+		if (!shuffled_classes.length) {
+			shuffled_classes = classes.slice();
+			// Try to avoid the same class as last time
+			for (let retry = 0; retry < 10; retry++) {
+				// Shuffle
+				for (let i = shuffled_classes.length - 1; i > 0; i--) {
+					const j = Math.floor(Math.random() * (i + 1));
+					[shuffled_classes[i], shuffled_classes[j]] = [shuffled_classes[j], shuffled_classes[i]];
+				}
+				// Check last class
+				if (shuffled_classes.length <= 0 || shuffled_classes[0] != drawing_class) break;
+			}
+		}
+
+		// Remove the first class
+		if (shuffled_classes.length > 0) {
+			drawing_class = shuffled_classes.shift();
+		}
+	}
+
+	update_instructions();
+}
+
+function update_instructions() {
+	const instructionsDiv = document.querySelector(".instructions");
+	let message = '-';
+
+	if (!classes) {		// Only if classes are not loaded yet
+		message = "(Press 'Start' to begin)";
+		document.querySelector("#nextButton").innerText = "➡️ Start";
+	} else if (drawing_class) {
+		message = `Draw: <span class="item">${drawing_class}</span>.`;
+		if (recognized_class === drawing_class) {
+			message += " ✅";
+			document.querySelector("#nextButton").innerText = "➡️ Next";
+		} else {
+			document.querySelector("#nextButton").innerText = "↩️ Skip";
+		}
+	} else {
+		message = 'Draw one of: ' + classes.map(c => `<span class="item">${c}</span>`).join(", ") + '.';
+		document.querySelector("#nextButton").innerText = "➡️ Next";
+	}
+	instructionsDiv.innerHTML = message;
+}
+
+function clear() {
+	const ctx = document.querySelector("canvas").getContext("2d");
+	ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+	show_results(null);
+	strokes.length = 0;
+	recognized_class = null;
+}
+
+function show_results(results) {
+	const resultsDiv = document.querySelector(".results");
+	recognized_class = null;
+	if (results == null) {
+		resultsDiv.innerHTML = '';
+	} else {
+		recognized_class = results.detected_class;
+		const correct = recognized_class === drawing_class;
+		if (!recognized_class) {
+			resultsDiv.innerHTML = `<h2>Sorry, I could not guess.</h2>`;
+		} else if (correct) {
+			resultsDiv.innerHTML = `<h2>Correct! I guessed it was: ${recognized_class}!</h2>`;
+		} else {
+			resultsDiv.innerHTML = `<h2>Oops, I thought it was: ${recognized_class}.</h2>`;
+		}
+		let ul = document.createElement("ul");
+		results.class_scores.forEach(item => {
+			let score = (item.score * 100).toFixed(0);
+			if (score > 0) {
+				let li = document.createElement("li");
+				li.textContent = `${item.class}: ${score}%`;
+				ul.appendChild(li);
+			}
+		});
+		resultsDiv.appendChild(ul);
+	}
+	update_instructions();
+}
+
+async function get_classes() {
+	const response = await fetch("./classes.json");
+	const result = await response.json();
+	console.log("Available classes:", result.classes);
+	return result.classes;
+}
+
+async function classify_strokes() {
+	const response = await fetch("./classify_strokes", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json"
+		},
+		body: JSON.stringify({ strokes: strokes })
+	});
+	const result = await response.json();
+	show_results(result);
+	return result;
+}
+
+async function classify_image() {
+	const canvas = document.querySelector("canvas");
+	const dataURL = canvas.toDataURL("image/png");
+	const rawData = dataURL.replace(/^data:image\/png;base64,/, "");
+	const response = await fetch("./classify_image_data", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json"
+		},
+		body: JSON.stringify({ image: rawData })
+	});
+	const result = await response.json();
+	show_results(result);
+	return result;
+}
+
+function classify_strokes() {
+	if (USE_LOCAL_RECOGNIZER) {
+		locally_classify_strokes();
+	} else {
+		classify_strokes();
+	}
+}
+
+document.querySelector("#clearButton").addEventListener("click", () => clear());
+document.querySelector("#classifyStrokesButton").addEventListener("click", () => classify_strokes());
+document.querySelector("#classifyImageButton").addEventListener("click", () => classify_image());
+document.querySelector("#nextButton").addEventListener("click", () => next_drawing());
+
+function startDrawing(x, y) {
+	is_drawing = true;
+	x = (x - offset_x) / scale;
+	y = (y - offset_y) / scale;
+	strokes.push([[x, y]]);
+	// Clear results
+	show_results(null);
+}
+
+function draw(x, y) {
+	if (!is_drawing) return;
+
+	x = (x - offset_x) / scale;
+	y = (y - offset_y) / scale;
+
+	const currentStroke = strokes[strokes.length - 1];
+
+	/*
+	const lastPoint = currentStroke[currentStroke.length - 1];
+	const ctx = document.querySelector("canvas").getContext("2d");
+	ctx.lineWidth = 4;
+	ctx.lineCap = "round";
+	ctx.beginPath();
+	ctx.moveTo(lastPoint[0], lastPoint[1]);
+	ctx.lineTo(x, y);
+	ctx.stroke();
+	*/
+
+	currentStroke.push([x, y]);
+	draw_to_canvas(document.querySelector("canvas"), strokes, true);
+
+	// Clear results
+	show_results(null);
+}
+
+function stopDrawing() {
+	is_drawing = false;
+
+	if (strokes.length > 0) {
+		if (strokes[strokes.length - 1].length <= 1) {
+			strokes.pop();
+		}
+	}
+
+	// If auto-checking...
+	if (document.querySelector("#classifyStrokesButton").classList.contains("hidden")) {
+		classify_strokes();
+	}
+}
+
+async function run() {
+	classes = await get_classes();
+	next_drawing();
+
+	const canvas = document.querySelector("canvas");
+	canvas.addEventListener("pointerdown", (e) => {
+		canvas.setPointerCapture(e.pointerId);
+		startDrawing(e.offsetX, e.offsetY);
+	});
+	canvas.addEventListener("pointermove", (e) => {
+		draw(e.offsetX, e.offsetY);
+	});
+	canvas.addEventListener("pointerup", (e) => {
+		stopDrawing();
+		canvas.releasePointerCapture(e.pointerId);
+	});
+
+	// Detect size change and resize canvas
+	function resizeCanvas() {
+		const rect = canvas.getBoundingClientRect();
+		const dpr = window.devicePixelRatio || 1;
+		canvas.width = rect.width * dpr;
+		canvas.height = rect.height * dpr;
+		const ctx = canvas.getContext("2d");
+		draw_to_canvas(canvas, strokes);
+	}
+	clear();
+	resizeCanvas();
+	window.addEventListener("resize", resizeCanvas);
+
+	// In local-recognition mode, preload
+	if (USE_LOCAL_RECOGNIZER) {
+		await recognize(); // Preload model
+	}
+}
+
+document.addEventListener("DOMContentLoaded", run);
+</script>
 </body>
 </html>
