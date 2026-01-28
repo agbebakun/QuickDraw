@@ -23,6 +23,8 @@ def load_model(filename = DEFAULT_MODEL):
 # Classify
 def classify(model, image, alt_max = False):
     image = np.array(image, dtype=np.float32)[None, None, :, :]
+    # Scale image to [0,1]
+    image = image / 255.0
     image = torch.from_numpy(image)
     logits = model(image)
 
@@ -35,16 +37,19 @@ def classify(model, image, alt_max = False):
     # Returning an ordered list with scores
 
     if alt_max:
-        # Alternative max normalization
-        logits = logits.detach().cpu().numpy()[0]
-        max_logit = max(logits)
-        min_logit = min(logits)
-        power = 2
-        values = ((logits - min_logit) ** power / (max_logit - min_logit) ** power)
-        sum_values = sum(values)
-        scores = values / sum_values
+        # Own implementation of Softmax
+        logit_values = logits.detach().cpu().numpy()[0]
+        logit_values = [float(v) for v in logit_values]
+        max_logit = max(logit_values)
+        #min_logit = min(logit_values)
+        # Exp values
+        exp_values = [pow(2.718281828459045, lv - max_logit) for lv in logit_values]
+        sum_exp = sum(exp_values)
+        scores = [ev / sum_exp for ev in exp_values]
+        print(scores)
     else:
         scores = torch.softmax(logits, dim=1).detach().cpu().numpy()[0]
+        scores = [float(v) for v in scores]
   
     class_scores = [(CLASSES[i], float(scores[i])) for i in range(len(CLASSES))]
     class_scores = sorted(class_scores, key=lambda x: x[1], reverse=True)
@@ -56,15 +61,18 @@ def most_likely(class_scores):
     return class_scores[0][0]
 
 # Print scores
-def print_scores(class_scores, threshold=0.001, top_k=5):
-    print("Class scores:")
+def print_scores(class_scores, threshold=0.001, top_k=6):
+    print("+----- Recognition -----+")
     count = 0
     for class_name, score in class_scores:
         if score >= threshold:
-            print(f"  {class_name}: {score:.4f}  = {score*100:.2f}%")
-            count += 1
-            if count >= top_k:
-                break
+            percentage = round(score * 100, 0)
+            if percentage > 0:
+                print(f"|  {class_name:12s}  {percentage:>5}% |")
+                count += 1
+                if top_k and count >= top_k:
+                    break
+    print("+-----------------------+")
 
 def classes():
     return CLASSES

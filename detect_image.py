@@ -26,9 +26,6 @@ CAPTURE_IMAGE_SHARPEN = False
 CAPTURE_IMAGE_PERSPECTIVE = True
 CAPTURE_IMAGE_INSET = 0.05        # Additional 5% crop inset margin
 
-USE_ALT_MAX = False  # Use alternative normalization for classification
-
-
 # Skeletonize - from: https://opencvpython.blogspot.com/2012/05/skeletonization-using-opencv-python.html
 def skeletonize(image):
     size = np.size(image)
@@ -286,8 +283,15 @@ def evaluate(filenames):
         image = load_from_file(filename)
 
         # If image dimensions are CLASSIFY_SIZE x CLASSIFY_SIZE and greyscale, skip normalization
-        if image.shape[0] == CLASSIFY_SIZE and image.shape[1] == CLASSIFY_SIZE and len(image.shape) == 2 and image.dtype == np.uint8:
-            normalized_image = image
+        if image.shape[0] == CLASSIFY_SIZE and image.shape[1] == CLASSIFY_SIZE and image.dtype == np.uint8:
+            # if not greyscale
+            if len(image.shape) != 2:
+                if image.shape[2] == 4:
+                    normalized_image = cv2.cvtColor(image, cv2.COLOR_RGBA2GRAY)
+                else:
+                    normalized_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            else:
+                normalized_image = image
             print("NOTE: Skipping normalization step for already-normalized image.")
         else:
             #debugPrefix = None
@@ -300,7 +304,7 @@ def evaluate(filenames):
             
             normalized_image = normalize_image(image, hack_sharpen, debugPrefix)
         
-        class_scores = classify(model, normalized_image, USE_ALT_MAX)
+        class_scores = classify(model, normalized_image)
         print()
         print_scores(class_scores)
         detected_class = most_likely(class_scores)

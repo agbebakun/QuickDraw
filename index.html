@@ -23,13 +23,14 @@ body {
 	position: absolute;
 	top: 0;
 	left: 0;
-	width: calc(4 * 28px);
+	width: calc(3 * 28px);
 	image-rendering: pixelated;
 	border: 1px solid black;
 	z-index: 1000;
 	box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
 	opacity: 0.8;
-	pointer-events: none;
+	/*pointer-events: none;*/
+	cursor: pointer;
 }
 main {
 	margin: auto;
@@ -139,6 +140,17 @@ main {
 .hidden {
 	display: none;
 }
+dt {
+  display: inline-block;
+  width: 4em;
+}
+dd {
+  display: inline;
+}
+dd::after {
+  content: "\A";
+  white-space: pre;
+}
 dialog {
 	border: none;
 	border-radius: 10px;
@@ -217,6 +229,8 @@ dialog button:hover {
 // Config
 const USE_LOCAL_RECOGNIZER = true;
 const SHOW_DIALOG = false;
+const RESULTS_TOP_K = 6;
+const RESULTS_THRESHOLD = 0.001;
 
 // State
 let last_error = null;
@@ -480,6 +494,26 @@ function canvas_to_image_data(canvas) {
 	return imageData;
 }
 
+function download() {
+	const debugImage = document.getElementById("debugImage");
+	if (debugImage) {
+		const link = document.createElement("a");
+		link.href = debugImage.src;
+		// id from YYYYMMDDHHMMSS
+		const now = new Date();
+		const id = now.getFullYear().toString().padStart(4, '0') +
+			(now.getMonth() + 1).toString().padStart(2, '0') +
+			now.getDate().toString().padStart(2, '0') +
+			now.getHours().toString().padStart(2, '0') +
+			now.getMinutes().toString().padStart(2, '0') +
+			now.getSeconds().toString().padStart(2, '0');
+		link.download = "image_" + id + ".png";
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+	}
+}
+
 // async function test() {
 // 	const data = randomImage();
 // 	const result = await recognize(data);
@@ -503,6 +537,7 @@ async function locally_classify_image(imageData) {
 					debugImage = document.createElement("img");
 					debugImage.id = "debugImage";
 					debugImage.className = "debug_image";
+					debugImage.addEventListener("click", () => { download(); });
 					document.body.insertBefore(debugImage, document.body.firstChild);
 				}
 				debugImage.src = imageUrl;
@@ -643,16 +678,27 @@ function show_results(results) {
 		} else {
 			resultsDiv.innerHTML = `<h2>❌ Oops, I thought it was: ${recognized_class}.</h2>`;
 		}
-		let ul = document.createElement("ul");
-		results.class_scores.forEach(item => {
-			let score = (item.score * 100).toFixed(0);
-			if (score > 0) {
-				let li = document.createElement("li");
-				li.textContent = `${item.class}: ${score}%`;
-				ul.appendChild(li);
+		const dl = document.createElement("dl");
+		const top_k = RESULTS_TOP_K;
+		let count = 0;
+		for (const item of results.class_scores) {
+			if (item.score >= RESULTS_THRESHOLD) {
+				let score = (item.score * 100).toFixed(0);
+				if (score > 0) {
+					let dt = document.createElement("dt");
+					dt.textContent = `${item.class}`;
+					dl.appendChild(dt);
+					let dd = document.createElement("dd");
+					dd.textContent = `${score}%`;
+					dl.appendChild(dd);
+					count += 1;
+					if (top_k && count >= top_k) {
+						break
+					}
+				}
 			}
-		});
-		resultsDiv.appendChild(ul);
+		};
+		resultsDiv.appendChild(dl);
 	}
 	update_instructions();
 }
