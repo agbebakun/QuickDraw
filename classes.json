@@ -23,7 +23,7 @@
     ],
     "_dialog": {
         "title": "Quick Draw!",
-        "content": "Welcome to <em>Quick Draw!</em></p>",
+        "content": "<p>Welcome to <em>Quick Draw!</em></p>",
         "button": "Start Drawing!"
     },
     "pairs": [

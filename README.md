@@ -49,10 +49,27 @@ Note also that images for each class are present in `images/*.png` at 72x72 reso
 
 If you want to use the web-only model (`index.html` & `onnx-recognizer.js`) and you retrain the model and/or change the recognized classes, you will need to re-export the `trained_models/whole_model_quickdraw.onnx` file and the `./classes.json` file with:
 
-
 ```bash
 python onnx-test.py export
 ```
+
+The `classes.json` file contains, for example:
+
+```json
+{
+    "classes": [ "class_a", "class_b", "class_c" ],
+    "dialog": {
+        "title": "Quick Draw!",
+        "content": "<p>Welcome to <em>Quick Draw!</em></p>",
+        "button": "Start Drawing!"
+    },
+    "pairs": [
+        ["class_a", "class_b"]
+    ]
+}
+```
+
+Classes with a `_` prefix will not be included in the web page's class list.  If set, the `dialog` field details will be used in the web page to show a welcome message.  The `pairs` field is used to show pairwise comparison scores in `detect_image.py`.
 
 
 ## Run the example painting app

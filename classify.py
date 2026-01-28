@@ -78,7 +78,7 @@ def print_scores(class_scores, threshold=0.001, top_k=6):
 def print_pairwise_scores(class_scores, pairs):
     if pairs is None or len(pairs) == 0:
         return
-    print("+--------------- Pairwise Scores ---------------+")
+    print("+------------ Pairwise Proportions -------------+")
     for (class1, class2) in pairs:
         score1 = 0.0
         score2 = 0.0
