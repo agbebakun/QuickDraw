@@ -5,8 +5,11 @@ from classify import load_model, classify, most_likely, classes
 from stroke_to_raster import stroke_to_raster               # For recognising from strokes
 from detect_image import normalize_image, load_from_buffer  # For recognising from image data
 
-model = load_model()
+HOST = '127.0.0.1'
+PORT = 5001
+CLASSES_JSON = False # Serve static file rather than via API
 
+model = load_model()
 
 app = Flask(__name__)
 @app.route('/')
@@ -33,8 +36,11 @@ def onnx_model():
 # API - return classes
 @app.route('/classes.json')
 def api_get_classes():
-    classes_list = classes()
-    return {"classes": classes_list}
+    if CLASSES_JSON:
+        return send_from_directory('.', 'classes.json', mimetype='application/json')
+    else:
+        classes_list = classes()
+        return {"classes": classes_list}
 
 
 # API - classify from sent image file data
@@ -113,6 +119,4 @@ def api_classify_strokes():
     return jsonify(response)
 
 
-host = '127.0.0.1'
-port = 5001
-app.run(debug=True, host=host, port=port)
+app.run(debug=True, host=HOST, port=PORT)

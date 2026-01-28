@@ -111,10 +111,50 @@ main {
 	width: 100%;
 	margin: 0 1em;
 }
+.error {
+	margin: 0.5em 0;
+	margin-right: 2em;
+	border: 1px solid red;
+	border-left: 10px solid red;
+	background-color: #ffcccc;
+	padding: 0.5em;
+	color: darkred;
+}
+.error::before {
+	content: "\26A0\0020";
+	font-weight: bold;
+}
 .hidden {
 	display: none;
 }
-
+dialog {
+	border: none;
+	border-radius: 10px;
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+	padding: 1em;
+	background-color: #f9f9f9;
+}
+dialog::backdrop {
+	background: rgba(0, 0, 0, 0.5);
+}
+dialog div.dialog_controls {
+	text-align: center;
+	margin-top: 2cm;
+}
+dialog button {
+	background-color: #4CAF50;
+	color: white;
+	border: none;
+	border-radius: 5px;
+	padding: 0.5em 1em;
+	cursor: pointer;
+	transition: background-color 0.3s;
+	font-size: 1.2em;
+	padding: 1em;
+}
+dialog button:hover {
+	background-color: #45a049;
+}
 </style>
 </head>
 <body>
@@ -151,18 +191,28 @@ main {
 	<canvas></canvas>
 </div>
 <div class="results"></div>
+
+<dialog>
+<h1>Quick Draw!</h1>
+<p>Welcome to <em>Quick Draw!</em></p>
+<div class="dialog_controls">
+	<button id="start" onclick="this.closest('dialog').close();">Start Drawing!</button>
+</div>
+</dialog>
+
 </main>
 <script>
 // Config
 const USE_LOCAL_RECOGNIZER = true;
+const SHOW_DIALOG = false;
 
 // State
+let last_error = null;
 const strokes = [];		// Completed strokes (each stroke is an array of points, each point is an [x, y] pair)
 const activeStrokes = new Map(); // Active strokes keyed by pointerId
 let drawing_class = null;
 let recognized_class = null;
 let classes = [];		// Fetch from server
-
 
 // --- LOCAL RECOGNIZER ---
 const IMAGE_SIZE = 28;
@@ -429,7 +479,13 @@ async function locally_classify_strokes() {
 
 
 let shuffled_classes = [];
+let drawing_count = 1;
 function next_drawing() {
+	// Count correct drawings
+	if (drawing_class && recognized_class === drawing_class) {
+		drawing_count += 1;
+	}
+
 	// Clear image
 	clear();
 
@@ -438,6 +494,8 @@ function next_drawing() {
 		// If no more shuffled classes are left, reshuffle
 		if (!shuffled_classes.length) {
 			shuffled_classes = classes.slice();
+			// Filter out classes with a '_' prefix
+			shuffled_classes = shuffled_classes.filter(c => !c.startsWith('_'));
 			// Try to avoid the same class as last time
 			for (let retry = 0; retry < 10; retry++) {
 				// Shuffle
@@ -467,7 +525,7 @@ function update_instructions() {
 		message = "(Press 'Start' to begin)";
 		document.querySelector("#nextButton").innerText = "➡️ Start";
 	} else if (drawing_class) {
-		message = `Draw: <span class="item">${drawing_class}</span>.`;
+		message = `Drawing ${drawing_count}: <span class="item">${drawing_class}</span>.`;
 		if (recognized_class === drawing_class) {
 			message += " ✅";
 			document.querySelector("#nextButton").innerText = "➡️ Next";
@@ -491,19 +549,23 @@ function clear() {
 }
 
 function show_results(results) {
+	let prefix = '';
+	if (last_error) {
+		prefix += `<p class="error">${last_error}</h2>`;
+	}
 	const resultsDiv = document.querySelector(".results");
 	recognized_class = null;
 	if (results == null) {
-		resultsDiv.innerHTML = '';
+		resultsDiv.innerHTML = prefix + '';
 	} else if (typeof results === 'string') {
-		resultsDiv.innerHTML = results;
+		resultsDiv.innerHTML = prefix + results;
 	} else {
 		recognized_class = results.detected_class;
 		const correct = recognized_class === drawing_class;
 		if (!recognized_class) {
-			resultsDiv.innerHTML = `<h2>😢 Sorry, I could not guess.</h2>`;
+			resultsDiv.innerHTML = prefix + `<h2>😢 Sorry, I could not guess.</h2>`;
 		} else if (correct) {
-			resultsDiv.innerHTML = `<h2>✅ Correct! I guessed it was: ${recognized_class}!</h2>`;
+			resultsDiv.innerHTML = prefix + `<h2>✅ Correct! I guessed it was: ${recognized_class}!</h2>`;
 		} else {
 			resultsDiv.innerHTML = `<h2>❌ Oops, I thought it was: ${recognized_class}.</h2>`;
 		}
@@ -611,10 +673,15 @@ function stopDrawing(pointerId) {
 }
 
 async function run() {
+	if (SHOW_DIALOG) {
+		document.querySelector("dialog").showModal();
+	}
+
 	try {
 		classes = await get_classes();
 	} catch (e) {
-		console.error("Error fetching classes:", e);
+		last_error = 'Error: Problem loading classes: ' + e.reason;
+		show_results();
 	}
 	next_drawing();
 
@@ -654,6 +721,15 @@ async function run() {
 		await recognize(); // Preload model
 	}
 }
+
+window.addEventListener("error", function(e) {
+	last_error = 'Error: Sorry, something unexpected has occurred (unhandled): ' + e.error;
+	show_results();
+});
+window.addEventListener("unhandledrejection", function(e) {
+	last_error = 'Error: Sorry, something unexpected has occurred (async rejection): ' + e.reason;
+	show_results();
+});
 
 document.addEventListener("DOMContentLoaded", run);
 </script>

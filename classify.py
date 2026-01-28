@@ -21,17 +21,34 @@ def load_model(filename = DEFAULT_MODEL):
 
 
 # Classify
-def classify(model, image):
+def classify(model, image, alt_max = False):
     image = np.array(image, dtype=np.float32)[None, None, :, :]
     image = torch.from_numpy(image)
     logits = model(image)
+
+    # logit_scores = [(CLASSES[i], float(logits[0][i])) for i in range(len(CLASSES))]
+    # print(logit_scores)
+
     # class_id = torch.argmax(logits[0])
     # detected_class = CLASSES[class_id]
     # return detected_class
     # Returning an ordered list with scores
-    scores = torch.softmax(logits, dim=1).detach().cpu().numpy()[0]
+
+    if alt_max:
+        # Alternative max normalization
+        logits = logits.detach().cpu().numpy()[0]
+        max_logit = max(logits)
+        min_logit = min(logits)
+        power = 2
+        values = ((logits - min_logit) ** power / (max_logit - min_logit) ** power)
+        sum_values = sum(values)
+        scores = values / sum_values
+    else:
+        scores = torch.softmax(logits, dim=1).detach().cpu().numpy()[0]
+  
     class_scores = [(CLASSES[i], float(scores[i])) for i in range(len(CLASSES))]
     class_scores = sorted(class_scores, key=lambda x: x[1], reverse=True)
+    #print(class_scores)
     return class_scores
 
 # Most likely from classification scores
@@ -44,7 +61,7 @@ def print_scores(class_scores, threshold=0.001, top_k=5):
     count = 0
     for class_name, score in class_scores:
         if score >= threshold:
-            print(f"  {class_name}: {score:.4f}")
+            print(f"  {class_name}: {score:.4f}  = {score*100:.2f}%")
             count += 1
             if count >= top_k:
                 break
