@@ -19,6 +19,18 @@ body {
 
 	overflow: hidden;
 }
+.debug_image {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: calc(4 * 28px);
+	image-rendering: pixelated;
+	border: 1px solid black;
+	z-index: 1000;
+	box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+	opacity: 0.8;
+	pointer-events: none;
+}
 main {
 	margin: auto;
 	padding: 0;
@@ -417,8 +429,29 @@ function canvas_to_image_url(canvas) {
 	return canvas.toDataURL("image/png");
 }
 
-function normalize_image(imageData) {
-	// HACK: Very rough non-aspect-preserving nearest-neighbour sample as greyscale array of desired size
+async function data_to_image_url(data) {
+	const imageData = new ImageData(IMAGE_SIZE, IMAGE_SIZE);
+	for (let y = 0; y < IMAGE_SIZE; y++) {
+		for (let x = 0; x < IMAGE_SIZE; x++) {
+			const si = y * IMAGE_SIZE + x;
+			const v = Math.floor(data[si] * 255);
+			const di = (y * IMAGE_SIZE + x) * 4;
+			imageData.data[di + 0] = v;
+			imageData.data[di + 1] = v;
+			imageData.data[di + 2] = v;
+			imageData.data[di + 3] = 255;
+		}
+	}
+	// Create temporary canvas
+	const canvas = document.createElement("canvas");
+	canvas.width = imageData.width;
+	canvas.height = imageData.height;
+	const ctx = canvas.getContext("2d");
+	ctx.putImageData(imageData, 0, 0);
+	return await canvas.toDataURL("image/png");
+}
+
+function image_to_data(imageData) {
 	const data = new Array(IMAGE_SIZE * IMAGE_SIZE);
 	for (let y = 0; y < IMAGE_SIZE; y++) {
 		for (let x = 0; x < IMAGE_SIZE; x++) {
@@ -459,8 +492,24 @@ async function locally_classify_image(imageData) {
 	let result = null;
 	if (imageData != null) {
 		// Convert to normalized form
-		imageData = normalize_image(imageData);
-		result = await recognize(imageData);
+		const data = image_to_data(imageData);
+
+		// Output debug image
+		if (classify_mode) {
+			const imageUrl = await data_to_image_url(data);
+			if (imageUrl) {
+				let debugImage = document.getElementById("debugImage");
+				if (!debugImage) {
+					debugImage = document.createElement("img");
+					debugImage.id = "debugImage";
+					debugImage.className = "debug_image";
+					document.body.insertBefore(debugImage, document.body.firstChild);
+				}
+				debugImage.src = imageUrl;
+			}
+		}
+
+		result = await recognize(data);
 	}
 	const results = {
 		detected_class: !result ? '' : classes[result.maxIndex],
@@ -476,26 +525,11 @@ async function locally_classify_image(imageData) {
 }
 
 async function locally_classify_strokes() {
-	show_results('💭 Thinking...');
+	show_results('💭 Redrawing...');
 
 	let imageData = null;
 	if (strokes.length > 0) {
 		const canvas = rescale_and_draw_to_canvas(strokes);
-
-		// Output debug image
-		if (false) {
-			const imageUrl = canvas_to_image_url(canvas);
-			if (imageUrl) {
-				let debugImage = document.getElementById("debugImage");
-				if (!debugImage) {
-					debugImage = document.createElement("img");
-					debugImage.id = "debugImage";
-					document.body.insertBefore(debugImage, document.body.firstChild);
-				}
-				debugImage.src = imageUrl;
-			}
-		}
-
 		imageData = canvas_to_image_data(canvas);
 	}
 
@@ -511,6 +545,7 @@ let shuffled_classes = [];
 let drawing_count = 1;
 function next_drawing() {
 	classify_mode = false;
+	
 	// Count correct drawings
 	if (drawing_class && recognized_class === drawing_class) {
 		drawing_count += 1;
@@ -573,6 +608,10 @@ function update_instructions() {
 }
 
 function clear() {
+	// If debug image exists, remove it
+	const debugImage = document.getElementById("debugImage");
+	if (debugImage) { debugImage.remove(); }
+
 	const ctx = document.querySelector("canvas").getContext("2d");
 	ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 	show_results(null);
@@ -792,6 +831,7 @@ async function run() {
 	const canvas = document.querySelector("canvas");
 	canvas.addEventListener("pointerdown", (e) => {
 		if (classify_mode == 'image') {
+			classify_mode = true;
 			clear();
 		}
 		canvas.setPointerCapture(e.pointerId);
