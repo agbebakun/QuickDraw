@@ -7,13 +7,14 @@ import cv2
 import numpy as np
 import torch
 
-from classify import load_model, classify, print_scores, most_likely
+from classify import load_model, classify, print_scores, most_likely, print_pairwise_scores
 
 LINE_DIAMETER = 16
 PADDING = 16
 UNIT_SIZE = 256
 CLASSIFY_SIZE = 28
 IMAGE_FILTER_COLOR = False  # When image is on a background color
+CLASSES_FILE = 'classes.json';
 
 # Open capture.png.orig.png with e.g. Pinta.app to determine crop coordinates
 CAPTURE_IMAGE_COORDINATES = [
@@ -25,6 +26,10 @@ CAPTURE_IMAGE_COORDINATES = [
 CAPTURE_IMAGE_SHARPEN = False
 CAPTURE_IMAGE_PERSPECTIVE = True
 CAPTURE_IMAGE_INSET = 0.05        # Additional 5% crop inset margin
+
+# Category-Category axis evaluation data
+config = {}
+
 
 # Skeletonize - from: https://opencvpython.blogspot.com/2012/05/skeletonization-using-opencv-python.html
 def skeletonize(image):
@@ -309,6 +314,8 @@ def evaluate(filenames):
         print_scores(class_scores)
         detected_class = most_likely(class_scores)
 
+        print_pairwise_scores(class_scores, config.get('pairs', None))
+
         if is_capture:
             print()
             print(f"CLASSIFICATION: {detected_class}")
@@ -323,6 +330,13 @@ def evaluate(filenames):
 
 
 if __name__ == '__main__':
+    import json
+    try:
+        with open(CLASSES_FILE, 'r') as f:
+            config = json.load(f)
+    except:
+        print("ERROR: Problem loading evaluation data: " + CLASSES_FILE)
+
     if len(sys.argv) == 2 and sys.argv[1] == '--capture':
         filenames = []
         while True:

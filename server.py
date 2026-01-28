@@ -7,7 +7,7 @@ from detect_image import normalize_image, load_from_buffer  # For recognising fr
 
 HOST = '127.0.0.1'
 PORT = 5001
-CLASSES_JSON = False # Serve static file rather than via API
+CLASSES_JSON = True # Serve static file -- after training, requires:  python onnx-test.py export
 
 model = load_model()
 

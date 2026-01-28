@@ -30,9 +30,32 @@ def convert_model():
     # Save classes
     list_classes = classes()
     import json
+    import os
+    existing_data = {}
+    excluded_classes = []
+    if os.path.exists(CLASSES_FILE):
+        print(f"Updating existing classes file: {CLASSES_FILE}")
+        try:
+            with open(CLASSES_FILE, 'r') as f:
+                existing_data = json.load(f)
+                # Filter excluded classes with '_' prefix
+                excluded_classes = [c[1:] for c in existing_data.get('classes') if c.startswith('_')]
+        except FileNotFoundError:
+            pass
+    
+    # Update classes
+    existing_data['classes'] = list_classes
+
+    # Rename any excluded classes to have a '_' prefix
+    for ex_class in excluded_classes:
+        if ex_class in existing_data['classes']:
+            idx = existing_data['classes'].index(ex_class)
+            existing_data['classes'][idx] = '_' + ex_class
+
+    # Save file
     with open(CLASSES_FILE, 'w') as f:
-        json.dump({"classes": list_classes}, f)
-    print(f"Saved classes to: {CLASSES_FILE}")
+        json.dump(existing_data, f, indent=4)
+        print(f"Saving: {CLASSES_FILE}")
 
     print(f"Loading and checking model: {MODEL_FILE}")
     import onnx

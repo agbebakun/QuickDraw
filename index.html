@@ -218,7 +218,9 @@ dialog button:hover {
 
 <dialog>
 <h1>Quick Draw!</h1>
-<p>Welcome to <em>Quick Draw!</em></p>
+<div>
+	<p>Welcome to <em>Quick Draw!</em></p>
+</div>
 <div class="dialog_controls">
 	<button id="start" onclick="this.closest('dialog').close();">Start Drawing!</button>
 </div>
@@ -228,7 +230,6 @@ dialog button:hover {
 <script>
 // Config
 const USE_LOCAL_RECOGNIZER = true;
-const SHOW_DIALOG = false;
 const RESULTS_TOP_K = 6;
 const RESULTS_THRESHOLD = 0.001;
 
@@ -238,7 +239,9 @@ const strokes = [];		// Completed strokes (each stroke is an array of points, ea
 const activeStrokes = new Map(); // Active strokes keyed by pointerId
 let drawing_class = null;
 let recognized_class = null;
-let classes = [];		// Fetch from server
+let config = {
+	classes: [],
+};		// Fetch from server
 let classify_mode = false;	// Classify mode for testing
 
 // --- LOCAL RECOGNIZER ---
@@ -547,10 +550,10 @@ async function locally_classify_image(imageData) {
 		result = await recognize(data);
 	}
 	const results = {
-		detected_class: !result ? '' : classes[result.maxIndex],
+		detected_class: !result ? '' : config.classes[result.maxIndex],
 		class_scores: !result ? [] : result.orderedIndices.map(idx => {
 			return {
-				class: classes[idx],
+				class: config.classes[idx],
 				score: result.softmax[idx],
 			};
 		}),
@@ -590,10 +593,10 @@ function next_drawing() {
 	clear();
 
 	// Only works if classes are loaded
-	if (classes) {
+	if (config.classes) {
 		// If no more shuffled classes are left, reshuffle
 		if (!shuffled_classes.length) {
-			shuffled_classes = classes.slice();
+			shuffled_classes = config.classes.slice();
 			// Filter out classes with a '_' prefix
 			shuffled_classes = shuffled_classes.filter(c => !c.startsWith('_'));
 			// Try to avoid the same class as last time
@@ -621,7 +624,7 @@ function update_instructions() {
 	const instructionsDiv = document.querySelector(".instructions");
 	let message = '-';
 
-	if (!classes) {		// Only if classes are not loaded yet
+	if (!config.classes) {		// Only if classes are not loaded yet
 		message = "(Press 'Start' to begin)";
 		document.querySelector("#nextButton").innerText = "➡️ Start";
 	} else if (classify_mode) {
@@ -636,7 +639,7 @@ function update_instructions() {
 			document.querySelector("#nextButton").innerText = "↩️ Skip";
 		}
 	} else {
-		message = 'Draw one of: ' + classes.map(c => `<span class="item">${c}</span>`).join(", ") + '.';
+		message = 'Draw one of: ' + config.classes.map(c => `<span class="item">${c}</span>`).join(", ") + '.';
 		document.querySelector("#nextButton").innerText = "➡️ Next";
 	}
 	instructionsDiv.innerHTML = message;
@@ -703,11 +706,11 @@ function show_results(results) {
 	update_instructions();
 }
 
-async function get_classes() {
+async function get_config() {
 	const response = await fetch("./classes.json");
 	const result = await response.json();
-	console.log("Available classes:", result.classes);
-	return result.classes;
+	console.log("Available config:", result);
+	return result;
 }
 
 async function server_classify_strokes() {
@@ -832,9 +835,13 @@ function stopDrawing(pointerId) {
 }
 
 async function run() {
-	if (SHOW_DIALOG) {
-		document.querySelector("dialog").showModal();
+	try {
+		config = await get_config();
+	} catch (e) {
+		last_error = 'Error: Problem loading config: ' + e.reason;
+		show_results();
 	}
+	next_drawing();
 
 	// Handle dropped files anywhere on the page
 	window.addEventListener("dragover", (e) => {
@@ -865,14 +872,6 @@ async function run() {
 			reader.readAsDataURL(file);
 		}
 	});
-
-	try {
-		classes = await get_classes();
-	} catch (e) {
-		last_error = 'Error: Problem loading classes: ' + e.reason;
-		show_results();
-	}
-	next_drawing();
 
 	const canvas = document.querySelector("canvas");
 	canvas.addEventListener("pointerdown", (e) => {
@@ -908,6 +907,19 @@ async function run() {
 	clear();
 	resizeCanvas();
 	window.addEventListener("resize", resizeCanvas);
+
+	if (config.dialog) {
+		if (config.dialog.title) {
+			document.querySelector("dialog h1").innerHTML = config.dialog.title;
+		}
+		if (config.dialog.content) {
+			document.querySelector("dialog div").innerHTML = config.dialog.content;
+		}
+		if (config.dialog.button) {
+			document.querySelector("dialog button").innerHTML = config.dialog.button;
+		}
+		document.querySelector("dialog").showModal();
+	}
 
 	// In local-recognition mode, preload
 	if (USE_LOCAL_RECOGNIZER) {

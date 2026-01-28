@@ -1,1 +1,35 @@
-{"classes": ["apple", "book", "bowtie", "candle", "cloud", "cup", "door", "envelope", "eyeglasses", "guitar", "hammer", "hat", "ice cream", "leaf", "scissors", "star", "t-shirt", "pants", "lightning", "tree"]}
+{
+    "classes": [
+        "apple",
+        "book",
+        "bowtie",
+        "candle",
+        "cloud",
+        "cup",
+        "door",
+        "envelope",
+        "eyeglasses",
+        "guitar",
+        "hammer",
+        "hat",
+        "ice cream",
+        "leaf",
+        "scissors",
+        "star",
+        "t-shirt",
+        "pants",
+        "lightning",
+        "tree"
+    ],
+    "_dialog": {
+        "title": "Quick Draw!",
+        "content": "Welcome to <em>Quick Draw!</em></p>",
+        "button": "Start Drawing!"
+    },
+    "pairs": [
+        ["cloud", "tree"],
+        ["hammer", "tree"],
+        ["hat", "book"],
+        ["book", "door"]
+    ]
+}

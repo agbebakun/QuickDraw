@@ -66,13 +66,36 @@ def print_scores(class_scores, threshold=0.001, top_k=6):
     count = 0
     for class_name, score in class_scores:
         if score >= threshold:
-            percentage = round(score * 100, 0)
+            percentage = int(round(score * 100, 0))
             if percentage > 0:
-                print(f"|  {class_name:12s}  {percentage:>5}% |")
+                print(f"|  {class_name:14s} {percentage:>3}%  |")
                 count += 1
                 if top_k and count >= top_k:
                     break
     print("+-----------------------+")
+
+# Print pairwise scores
+def print_pairwise_scores(class_scores, pairs):
+    if pairs is None or len(pairs) == 0:
+        return
+    print("+--------------- Pairwise Scores ---------------+")
+    for (class1, class2) in pairs:
+        score1 = 0.0
+        score2 = 0.0
+        for (cname, score) in class_scores:
+            if cname == class1:
+                score1 = score
+            if cname == class2:
+                score2 = score
+        total = score1 + score2
+        p1 = 0
+        p2 = 0
+        if total > 0:
+            p1 = int(round(score1 / total * 100.0))
+            p2 = int(round(score2 / total * 100.0))
+        print(f"|  {class1:14s} {p1:>3.0f}%  |  {p2:>3.0f}% {class2:>14s}  |")
+    print("+-----------------------+-----------------------+")
+    
 
 def classes():
     return CLASSES
