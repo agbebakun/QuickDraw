@@ -213,6 +213,7 @@ const activeStrokes = new Map(); // Active strokes keyed by pointerId
 let drawing_class = null;
 let recognized_class = null;
 let classes = [];		// Fetch from server
+let classify_mode = false;	// Classify mode for testing
 
 // --- LOCAL RECOGNIZER ---
 const IMAGE_SIZE = 28;
@@ -259,8 +260,14 @@ async function recognize(data = null) {
 	if (!data) {
 		return null;
 	}
+	if (data.data) {	// Directly handle ImageData
+		data = data.data;
+	}
 
 	console.log("Running recognition...");
+	if (data.length !== IMAGE_SIZE * IMAGE_SIZE) {
+		throw new Error(`Invalid input data size: expected ${IMAGE_SIZE * IMAGE_SIZE}, got ${data.length}`);
+	}
 	const output = await recognizer.recognize(data);
 	// console.log("Recognition output:", output);
 
@@ -410,14 +417,14 @@ function canvas_to_image_url(canvas) {
 	return canvas.toDataURL("image/png");
 }
 
-function canvas_to_image_data(canvas) {
-	if (!canvas) return null;
-	const imageData = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
-	// Greyscale to array of exact size
+function normalize_image(imageData) {
+	// HACK: Very rough non-aspect-preserving nearest-neighbour sample as greyscale array of desired size
 	const data = new Array(IMAGE_SIZE * IMAGE_SIZE);
 	for (let y = 0; y < IMAGE_SIZE; y++) {
 		for (let x = 0; x < IMAGE_SIZE; x++) {
-			const index = (y * IMAGE_SIZE + x) * 4;
+			const ix = Math.floor(x * imageData.width / IMAGE_SIZE);
+			const iy = Math.floor(y * imageData.height / IMAGE_SIZE);
+			const index = (iy * imageData.width + ix) * 4;
 			const r = imageData.data[index + 0];
 			const g = imageData.data[index + 1];
 			const b = imageData.data[index + 2];
@@ -426,7 +433,18 @@ function canvas_to_image_data(canvas) {
 			data[y * IMAGE_SIZE + x] = grey;
 		}
 	}
-	return data;
+	return data;	
+}
+
+function canvas_to_image_data(canvas) {
+	if (!canvas) {
+		console.error("No canvas provided for image data conversion");
+		return null;
+	}
+	const imageData = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+	imageData.width = canvas.width;
+	imageData.height = canvas.height;
+	return imageData;
 }
 
 // async function test() {
@@ -435,11 +453,32 @@ function canvas_to_image_data(canvas) {
 // 	console.log(result);
 // }
 // test();
+async function locally_classify_image(imageData) {
+	show_results('💭 Thinking...');
+
+	let result = null;
+	if (imageData != null) {
+		// Convert to normalized form
+		imageData = normalize_image(imageData);
+		result = await recognize(imageData);
+	}
+	const results = {
+		detected_class: !result ? '' : classes[result.maxIndex],
+		class_scores: !result ? [] : result.orderedIndices.map(idx => {
+			return {
+				class: classes[idx],
+				score: result.softmax[idx],
+			};
+		}),
+	};
+	show_results(results);
+	return results;
+}
 
 async function locally_classify_strokes() {
 	show_results('💭 Thinking...');
 
-	let result = null;
+	let imageData = null;
 	if (strokes.length > 0) {
 		const canvas = rescale_and_draw_to_canvas(strokes);
 
@@ -457,21 +496,11 @@ async function locally_classify_strokes() {
 			}
 		}
 
-		const imageData = canvas_to_image_data(canvas);
-		result = await recognize(imageData);
+		imageData = canvas_to_image_data(canvas);
 	}
 
-	const results = {
-		detected_class: !result ? '' : classes[result.maxIndex],
-		class_scores: !result ? [] : result.orderedIndices.map(idx => {
-			return {
-				class: classes[idx],
-				score: result.softmax[idx],
-			};
-		}),
-	};
-
-	show_results(results);
+	const results = await locally_classify_image(imageData);
+	return results;
 }
 
 // ------
@@ -481,6 +510,7 @@ async function locally_classify_strokes() {
 let shuffled_classes = [];
 let drawing_count = 1;
 function next_drawing() {
+	classify_mode = false;
 	// Count correct drawings
 	if (drawing_class && recognized_class === drawing_class) {
 		drawing_count += 1;
@@ -524,6 +554,9 @@ function update_instructions() {
 	if (!classes) {		// Only if classes are not loaded yet
 		message = "(Press 'Start' to begin)";
 		document.querySelector("#nextButton").innerText = "➡️ Start";
+	} else if (classify_mode) {
+		message = 'Classifying mode.';
+		document.querySelector("#nextButton").innerText = "➡️ Resume";
 	} else if (drawing_class) {
 		message = `Drawing ${drawing_count}: <span class="item">${drawing_class}</span>.`;
 		if (recognized_class === drawing_class) {
@@ -562,7 +595,9 @@ function show_results(results) {
 	} else {
 		recognized_class = results.detected_class;
 		const correct = recognized_class === drawing_class;
-		if (!recognized_class) {
+		if (classify_mode) {
+			resultsDiv.innerHTML = prefix + `<h2>ℹ️ My guess was: ${recognized_class}</h2>`;
+		} else if (!recognized_class) {
 			resultsDiv.innerHTML = prefix + `<h2>😢 Sorry, I could not guess.</h2>`;
 		} else if (correct) {
 			resultsDiv.innerHTML = prefix + `<h2>✅ Correct! I guessed it was: ${recognized_class}!</h2>`;
@@ -590,7 +625,7 @@ async function get_classes() {
 	return result.classes;
 }
 
-async function classify_strokes() {
+async function server_classify_strokes() {
 	const response = await fetch("./classify_strokes", {
 		method: "POST",
 		headers: {
@@ -603,7 +638,7 @@ async function classify_strokes() {
 	return result;
 }
 
-async function classify_image() {
+async function server_classify_image() {
 	const canvas = document.querySelector("canvas");
 	const dataURL = canvas.toDataURL("image/png");
 	const rawData = dataURL.replace(/^data:image\/png;base64,/, "");
@@ -614,20 +649,59 @@ async function classify_image() {
 		},
 		body: JSON.stringify({ image: rawData })
 	});
+	// Check response code
+	if (!response.ok) {
+		last_error = `Error: Problem requesting classification from server, returned status ${response.status} (${response.statusText})`;
+		show_results();
+		return;
+	}
 	const result = await response.json();
 	show_results(result);
 	return result;
+}
+
+function classify_image(image = null) {
+	let canvas = null;
+	if (!image) {
+		canvas = document.querySelector("canvas");
+	} else {
+		// Draw image to temporary canvas
+		canvas = document.createElement("canvas");
+		canvas.width = image.width;
+		canvas.height = image.height;
+		const ctx = canvas.getContext("2d");
+		ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+	}
+	const imageData = canvas_to_image_data(canvas);
+	if (!imageData) {
+		console.error("No image data available for classification");
+		return null;
+	} else {
+		imageData.width = canvas.width;
+		imageData.height = canvas.height;
+		if (USE_LOCAL_RECOGNIZER) {
+			return locally_classify_image(imageData);
+		} else {
+			return server_classify_image(imageData);
+		}
+	}
 }
 
 function classify_strokes() {
 	if (USE_LOCAL_RECOGNIZER) {
 		locally_classify_strokes();
 	} else {
-		classify_strokes();
+		server_classify_strokes();
 	}
 }
 
-document.querySelector("#clearButton").addEventListener("click", () => clear());
+document.querySelector("#clearButton").addEventListener("click", (e) => {
+	// If shift is pressed
+	if (e.shiftKey) {
+		classify_mode = true;
+	}
+	clear();
+});
 document.querySelector("#classifyStrokesButton").addEventListener("click", () => classify_strokes());
 document.querySelector("#classifyImageButton").addEventListener("click", () => classify_image());
 document.querySelector("#nextButton").addEventListener("click", () => next_drawing());
@@ -677,6 +751,36 @@ async function run() {
 		document.querySelector("dialog").showModal();
 	}
 
+	// Handle dropped files anywhere on the page
+	window.addEventListener("dragover", (e) => {
+		e.preventDefault();
+	});
+	window.addEventListener("drop", async (e) => {
+		e.preventDefault();
+		if (e.dataTransfer.files.length > 0) {
+			const file = e.dataTransfer.files[0];
+			const reader = new FileReader();
+			reader.onload = async function(event) {
+				const img = new Image();
+				img.onload = async function() {
+					classify_mode = 'image';
+					// Draw to canvas
+					const canvas = document.querySelector("canvas");
+					const ctx = canvas.getContext("2d");
+					ctx.clearRect(0, 0, canvas.width, canvas.height);
+					const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+					const x = (canvas.width - img.width * scale) / 2;
+					const y = (canvas.height - img.height * scale) / 2;
+					ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+					// Classify image
+					await classify_image(img);
+				}
+				img.src = event.target.result;
+			}
+			reader.readAsDataURL(file);
+		}
+	});
+
 	try {
 		classes = await get_classes();
 	} catch (e) {
@@ -687,6 +791,9 @@ async function run() {
 
 	const canvas = document.querySelector("canvas");
 	canvas.addEventListener("pointerdown", (e) => {
+		if (classify_mode == 'image') {
+			clear();
+		}
 		canvas.setPointerCapture(e.pointerId);
 		startDrawing(e.pointerId, e.offsetX, e.offsetY);
 	});
